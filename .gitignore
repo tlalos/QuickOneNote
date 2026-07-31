@@ -1,0 +1,18 @@
+# Build output
+bin/
+obj/
+
+# Publish output (large, self-contained runtime)
+dist/
+*.rar
+
+# Visual Studio / user files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# OS
+Thumbs.db
+Desktop.ini

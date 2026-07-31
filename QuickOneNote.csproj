@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Windows-version TFM projects the WinRT APIs (Windows.Media.Ocr) for offline OCR. -->
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>QuickOneNote</AssemblyName>
+    <RootNamespace>QuickOneNote</RootNamespace>
+    <Version>1.0.0</Version>
+    <StartupObject>QuickOneNote.Program</StartupObject>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!--
+      The locally installed Office/OneNote is 32-bit and only registers its 32-bit type
+      library (HKCR\TypeLib win32 only). A 64-bit client cannot marshal OneNote's COM
+      interface ("Library not registered" / TYPE_E_LIBNOTREGISTERED), so we must run as x86
+      to match OneNote's bitness.
+    -->
+    <PlatformTarget>x86</PlatformTarget>
+  </PropertyGroup>
+
+  <!--
+    Strongly-typed OneNote interop. The DLL under lib\ was generated once with tlbimp from
+    the type library embedded in the desktop OneNote (ONENOTE.EXE resource #3):
+
+      tlbimp "C:\Program Files (x86)\Microsoft Office\Root\Office16\ONENOTE.EXE\3" \
+             /out:lib\Microsoft.Office.Interop.OneNote.dll \
+             /namespace:Microsoft.Office.Interop.OneNote
+
+    Early binding is required: late-bound reflection over IDispatch throws
+    TYPE_E_LIBNOTREGISTERED because the CLR can't resolve the embedded ITypeInfo.
+    EmbedInteropTypes bakes the needed types into our exe, so the lib DLL is not shipped.
+  -->
+  <ItemGroup>
+    <Reference Include="Microsoft.Office.Interop.OneNote">
+      <HintPath>lib\Microsoft.Office.Interop.OneNote.dll</HintPath>
+      <EmbedInteropTypes>true</EmbedInteropTypes>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
