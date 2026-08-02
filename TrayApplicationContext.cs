@@ -142,7 +142,13 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     /// <summary>Capture the focused monitor and send it — one keypress, no copy needed.</summary>
     private void CaptureScreenNow() =>
-        RunCapture(ClipboardCapture.CaptureFocusedScreen, "Could not capture the screen.", "a full-screen screenshot");
+        RunCapture(() =>
+        {
+            var content = ClipboardCapture.CaptureFocusedScreen();
+            if (_settings.SaveScreenshots && content.PngImage is { Length: > 0 } png)
+                ScreenshotSaver.Save(png);
+            return content;
+        }, "Could not capture the screen.", "a full-screen screenshot");
 
     /// <summary>Draw a region on screen, annotate it, then Copy/Save/Send it to OneNote.</summary>
     private void StartSnip()
@@ -182,6 +188,9 @@ public sealed class TrayApplicationContext : ApplicationContext
                 }
                 crop = overlay.Result;
             }
+
+            // Auto-save the raw snip to Pictures\Screenshots, like the Windows Snipping Tool.
+            if (_settings.SaveScreenshots) ScreenshotSaver.Save(crop);
 
             // Snip succeeded — the previous editor is replaced.
             if (old is { IsDisposed: false }) { _editor = null; old.Close(); }

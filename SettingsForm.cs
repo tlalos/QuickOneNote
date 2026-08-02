@@ -28,6 +28,7 @@ public sealed class SettingsForm : Form
     private readonly ToolTip _tips = new();
     private readonly CheckBox _notifications = new();
     private readonly CheckBox _autostart = new();
+    private readonly CheckBox _saveShots = new();
 
     private HotkeyConfig _pendingHotkey;
     private HotkeyConfig _pendingClipHotkey;
@@ -55,6 +56,7 @@ public sealed class SettingsForm : Form
             SnipHotkey = new HotkeyConfig { Modifiers = current.SnipHotkey.Modifiers, VirtualKey = current.SnipHotkey.VirtualKey },
             SeriesHotkey = new HotkeyConfig { Modifiers = current.SeriesHotkey.Modifiers, VirtualKey = current.SeriesHotkey.VirtualKey },
             ShowNotifications = current.ShowNotifications,
+            SaveScreenshots = current.SaveScreenshots,
         };
         _pendingHotkey = _working.Hotkey;
         _pendingClipHotkey = _working.ClipboardHotkey;
@@ -67,6 +69,7 @@ public sealed class SettingsForm : Form
 
         _clientId.Text = _working.GraphClientId ?? "";
         _notifications.Checked = _working.ShowNotifications;
+        _saveShots.Checked = _working.SaveScreenshots;
         _autostart.Checked = Startup.IsEnabled();
         _hotkeyBox.Text = _working.Hotkey.Display;
         _clipHotkeyBox.Text = _working.ClipboardHotkey.Display;
@@ -88,7 +91,7 @@ public sealed class SettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(460, 828);
+        ClientSize = new Size(460, 854);
         Icon = IconFactory.CreateNoteIcon();
 
         int x = 16, w = 428;
@@ -181,13 +184,17 @@ public sealed class SettingsForm : Form
         _notifications.Location = new Point(x, 714);
         _notifications.AutoSize = true;
 
+        _saveShots.Text = @"Save screenshots to Pictures\Screenshots";
+        _saveShots.Location = new Point(x, 740);
+        _saveShots.AutoSize = true;
+
         _autostart.Text = "Start with Windows (run at login)";
-        _autostart.Location = new Point(x, 740);
+        _autostart.Location = new Point(x, 766);
         _autostart.AutoSize = true;
 
-        var ok = new Button { Text = "Save", Location = new Point(w - 74 + x, 782), Size = new Size(90, 30) };
+        var ok = new Button { Text = "Save", Location = new Point(w - 74 + x, 808), Size = new Size(90, 30) };
         ok.Click += Ok_Click;
-        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(w - 170 + x, 782), Size = new Size(90, 30) };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(w - 170 + x, 808), Size = new Size(90, 30) };
 
         Controls.AddRange(new Control[]
         {
@@ -197,7 +204,7 @@ public sealed class SettingsForm : Form
             lblMode, _mode,
             lblHotkey, _hotkeyBox, lblClipHotkey, _clipHotkeyBox, lblScreenHotkey, _screenshotHotkeyBox,
             lblSnipHotkey, _snipHotkeyBox, lblSeriesHotkey, _seriesHotkeyBox,
-            _notifications, _autostart, ok, cancel,
+            _notifications, _saveShots, _autostart, ok, cancel,
         });
 
         const string hotkeyTip = "Click and press a key combination (must include Ctrl, Shift, or Alt). Press Delete to clear and disable this shortcut.";
@@ -400,6 +407,7 @@ public sealed class SettingsForm : Form
         _working.SnipHotkey = _pendingSnipHotkey;
         _working.SeriesHotkey = _pendingSeriesHotkey;
         _working.ShowNotifications = _notifications.Checked;
+        _working.SaveScreenshots = _saveShots.Checked;
 
         // Apply the run-at-login registry entry immediately.
         Startup.Set(_autostart.Checked);

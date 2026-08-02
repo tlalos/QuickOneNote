@@ -143,6 +143,9 @@ public sealed class AppSettings
 
     public bool ShowNotifications { get; set; } = true;
 
+    /// <summary>Auto-save every captured screenshot to Pictures\Screenshots (like the Snipping Tool).</summary>
+    public bool SaveScreenshots { get; set; } = true;
+
     [JsonIgnore]
     public bool IsConfigured => !string.IsNullOrEmpty(SectionId);
 
