@@ -54,6 +54,12 @@ public sealed class SnipEditorForm : Form
 
         var tools = _toolsStrip = SnipUi.MakeToolStrip();
 
+        // Re-snip (new selection) sits first.
+        var resnip = SnipUi.GlyphButton(SnipUi.GlyphResnip, "New selection (re-snip)");
+        resnip.Click += (_, _) => ReselectRequested?.Invoke();
+        tools.Items.Add(resnip);
+        tools.Items.Add(new ToolStripSeparator());
+
         _toolbar = new DrawingToolbar(_canvas);
         _toolbar.AddTo(tools);
         tools.Items.Add(new ToolStripSeparator());
@@ -64,10 +70,6 @@ public sealed class SnipEditorForm : Form
         var redo = SnipUi.GlyphButton(SnipUi.GlyphRedo, "Redo (Ctrl+Y)");
         redo.Click += (_, _) => _canvas.Redo();
         tools.Items.Add(redo);
-
-        var resnip = SnipUi.GlyphButton(SnipUi.GlyphResnip, "New selection (re-snip)");
-        resnip.Click += (_, _) => ReselectRequested?.Invoke();
-        tools.Items.Add(resnip);
 
         tools.Items.Add(new ToolStripSeparator());
         tools.Items.Add(BuildBeautifyMenu());
@@ -136,6 +138,7 @@ public sealed class SnipEditorForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+
         // Make sure the window is at least wide enough to show every toolbar item.
         int need = _toolsStrip.GetPreferredSize(new Size(int.MaxValue, _toolsStrip.Height)).Width + 24;
         int chrome = Width - ClientSize.Width;      // window borders

@@ -159,12 +159,16 @@ public sealed class TrayApplicationContext : ApplicationContext
         var old = _editor;
         try
         {
-            // Hide any open editor and let the desktop repaint so it isn't captured in the shot.
+            // Hide any open editor and give the desktop time to repaint (pumping messages) so the
+            // window isn't captured in the shot.
             if (old is { IsDisposed: false })
             {
                 old.Hide();
-                Application.DoEvents();
-                System.Threading.Thread.Sleep(120);
+                for (int i = 0; i < 5; i++)
+                {
+                    Application.DoEvents();
+                    System.Threading.Thread.Sleep(50);
+                }
                 Application.DoEvents();
             }
 

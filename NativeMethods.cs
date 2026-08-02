@@ -66,6 +66,13 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
+    // Excludes a window from screen capture (BitBlt/PrintWindow/DWM) — Win10 2004+.
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+    public const uint WDA_NONE = 0x0;
+    public const uint WDA_EXCLUDEFROMCAPTURE = 0x11;
+
     private const uint MAPVK_VK_TO_VSC = 0;
     private const ushort VK_A = 0x41;
 
