@@ -125,7 +125,11 @@ public sealed class SnipEditorForm : Form
         Controls.Add(tools);
 
         _toolbar.SelectTool(SnipCanvas.ToolKind.Highlighter);
-        _toolbar.SelectColor(Color.Yellow);
+        _toolbar.SelectColor(Color.DodgerBlue);
+
+        // Keep the clipboard in sync with edits: every committed change re-copies the composited
+        // image, so pasting elsewhere always reflects the shapes/steps/effects currently on screen.
+        _canvas.Changed += CopyCompositeToClipboard;
 
         KeyPreview = true;
         KeyDown += (_, e) =>
@@ -302,10 +306,17 @@ public sealed class SnipEditorForm : Form
 
     // ----- Actions -----
 
-    private void DoCopy()
+    private void DoCopy() => CopyCompositeToClipboard();
+
+    /// <summary>Put the current composited image (screenshot + all edits) on the clipboard.</summary>
+    private void CopyCompositeToClipboard()
     {
-        using var bmp = _canvas.Render();
-        try { Clipboard.SetImage(bmp); } catch { }
+        try
+        {
+            using var bmp = _canvas.Render();
+            Clipboard.SetImage(bmp);
+        }
+        catch { /* clipboard may be briefly locked by another app */ }
     }
 
     private void DoSave()

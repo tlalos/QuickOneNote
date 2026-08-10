@@ -155,20 +155,43 @@ internal sealed class BlurAnnotation : Annotation
     public override Annotation Clone() => new BlurAnnotation { Start = Start, End = End };
 }
 
+/// <summary>The badge outline used by a numbered step.</summary>
+internal enum StepShape { Circle, Square, RoundedSquare }
+
 internal sealed class StepAnnotation : Annotation
 {
     public PointF Center;
     public int Number;
     public Color Color;
     public float Radius = 16f;
+    public StepShape Shape = StepShape.Circle;
 
     public override void Draw(Graphics g, Bitmap baseImage)
     {
         var rect = new RectangleF(Center.X - Radius, Center.Y - Radius, Radius * 2, Radius * 2);
+        float ringW = Math.Max(2f, Radius * 0.12f);
         using (var br = new SolidBrush(Color))
-            g.FillEllipse(br, rect);
-        using (var ring = new Pen(Color.White, Math.Max(2f, Radius * 0.12f)))
-            g.DrawEllipse(ring, rect);
+        using (var ring = new Pen(Color.White, ringW))
+        {
+            switch (Shape)
+            {
+                case StepShape.Square:
+                    g.FillRectangle(br, rect);
+                    g.DrawRectangle(ring, rect.X, rect.Y, rect.Width, rect.Height);
+                    break;
+                case StepShape.RoundedSquare:
+                    using (var path = RoundedRect(rect, Radius * 0.5f))
+                    {
+                        g.FillPath(br, path);
+                        g.DrawPath(ring, path);
+                    }
+                    break;
+                default:
+                    g.FillEllipse(br, rect);
+                    g.DrawEllipse(ring, rect);
+                    break;
+            }
+        }
 
         string s = Number.ToString();
         using var f = new Font("Segoe UI", Radius * 1.05f, FontStyle.Bold, GraphicsUnit.Pixel);
@@ -177,12 +200,27 @@ internal sealed class StepAnnotation : Annotation
         g.DrawString(s, f, tb, Center.X - sz.Width / 2, Center.Y - sz.Height / 2);
     }
 
+    private static System.Drawing.Drawing2D.GraphicsPath RoundedRect(RectangleF r, float radius)
+    {
+        float d = radius * 2;
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        path.AddArc(r.X, r.Y, d, d, 180, 90);
+        path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+        path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+
     public override RectangleF Bounds => new(Center.X - Radius, Center.Y - Radius, Radius * 2, Radius * 2);
     public override void Move(float dx, float dy) => Center = new PointF(Center.X + dx, Center.Y + dy);
     public override bool HitTest(PointF p)
     {
+        // Square/rounded use the bounding box; circle uses the inscribed radius.
+        if (Shape != StepShape.Circle) return Bounds.Contains(p);
         float dx = p.X - Center.X, dy = p.Y - Center.Y;
         return dx * dx + dy * dy <= Radius * Radius;
     }
-    public override Annotation Clone() => new StepAnnotation { Center = Center, Number = Number, Color = Color, Radius = Radius };
+    public override Annotation Clone() =>
+        new StepAnnotation { Center = Center, Number = Number, Color = Color, Radius = Radius, Shape = Shape };
 }

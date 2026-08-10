@@ -41,17 +41,30 @@ internal sealed class SnipCanvas : Control
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public float StrokeWidth { get; set; } = 4f;
 
+    /// <summary>Badge outline used by the numbered-step tool.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public StepShape StepShape { get; set; } = StepShape.Circle;
+
+    /// <summary>Reset the numbered-step counter so the next step starts again at 1.</summary>
+    public void ResetStepNumber() => _stepCounter = 0;
+
     public float Zoom => _zoom;
     public Size ImageSize => _image.Size;
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
     public event Action? ZoomChanged;
 
+    /// <summary>Raised after any committed change to the image (annotation added/moved/deleted,
+    /// undo/redo, or a beautify change). Used to keep the clipboard in sync with edits.</summary>
+    public event Action? Changed;
+
+    private void RaiseChanged() => Changed?.Invoke();
+
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public BeautifySettings Beautify { get; } = new();
 
     /// <summary>Call after changing Beautify settings so the view re-fits and repaints.</summary>
-    public void BeautifyChanged() { _initZoom = false; _zoom = 1f; ZoomChanged?.Invoke(); Invalidate(); }
+    public void BeautifyChanged() { _initZoom = false; _zoom = 1f; ZoomChanged?.Invoke(); Invalidate(); RaiseChanged(); }
 
     public SnipCanvas(Bitmap image, List<Annotation>? items = null)
     {
@@ -170,7 +183,7 @@ internal sealed class SnipCanvas : Control
                 break;
 
             case ToolKind.Step:
-                Add(new StepAnnotation { Center = p, Number = ++_stepCounter, Color = Color });
+                Add(new StepAnnotation { Center = p, Number = ++_stepCounter, Color = Color, Shape = StepShape });
                 break;
 
             case ToolKind.Text:
@@ -219,7 +232,11 @@ internal sealed class SnipCanvas : Control
         if (_current is ShapeAnnotation sh && Near(sh.Start, sh.End)) { _items.Remove(sh); discarded = true; }
         else if (_current is BlurAnnotation b && Near(b.Start, b.End)) { _items.Remove(b); discarded = true; }
         if (discarded && _undo.Count > 0) _undo.RemoveAt(_undo.Count - 1);
+
+        bool changed = (_current != null && !discarded) || _movePushed;   // committed draw or a move
         _current = null;
+        _movePushed = false;
+        if (changed) RaiseChanged();
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -233,6 +250,7 @@ internal sealed class SnipCanvas : Control
             _items.Remove(_selected);
             _selected = null;
             Invalidate();
+            RaiseChanged();
         }
     }
 
@@ -260,7 +278,7 @@ internal sealed class SnipCanvas : Control
     };
 
     private void Begin(Annotation a) { PushUndo(); _items.Add(a); _current = a; Invalidate(); }
-    private void Add(Annotation a) { PushUndo(); _items.Add(a); Invalidate(); }
+    private void Add(Annotation a) { PushUndo(); _items.Add(a); Invalidate(); RaiseChanged(); }
 
     private void PushUndo()
     {
@@ -339,6 +357,7 @@ internal sealed class SnipCanvas : Control
         _current = null;
         _selected = null;
         Invalidate();
+        RaiseChanged();
     }
 
     public void ResetZoom() { _zoom = 1f; ZoomChanged?.Invoke(); Invalidate(); }

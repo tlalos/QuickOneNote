@@ -18,8 +18,10 @@ internal sealed class DrawingToolbar
     private readonly SnipCanvas _canvas;
     private readonly List<(SnipCanvas.ToolKind tool, ToolStripButton btn)> _tools = new();
     private ToolStripSplitButton _shapesBtn = null!;
+    private ToolStripSplitButton _stepBtn = null!;
     private ToolStripDropDownButton _colorBtn = null!;
-    private SnipCanvas.ToolKind _currentShape = SnipCanvas.ToolKind.Rectangle;
+    private SnipCanvas.ToolKind _currentShape = SnipCanvas.ToolKind.Arrow;
+    private StepShape _currentStepShape = StepShape.Circle;
 
     public DrawingToolbar(SnipCanvas canvas) => _canvas = canvas;
 
@@ -32,7 +34,7 @@ internal sealed class DrawingToolbar
         AddShapes(ts);
         AddTool(ts, SnipCanvas.ToolKind.Text, ToolIcons.Text(), "Text");
         AddTool(ts, SnipCanvas.ToolKind.Blur, ToolIcons.Blur(), "Blur / redact");
-        AddTool(ts, SnipCanvas.ToolKind.Step, ToolIcons.Step(), "Numbered step");
+        AddSteps(ts);
         ts.Items.Add(new ToolStripSeparator());
         AddColors(ts);
         ts.Items.Add(BuildThickness());
@@ -91,6 +93,47 @@ internal sealed class DrawingToolbar
         ts.Items.Add(_shapesBtn);
     }
 
+    // ----- Numbered-step dropdown -----
+
+    private void AddSteps(ToolStrip ts)
+    {
+        _stepBtn = new ToolStripSplitButton
+        {
+            Image = ToolIcons.Step(),
+            DisplayStyle = ToolStripItemDisplayStyle.Image,
+            AutoSize = false,
+            Size = new Size(SnipUi.ButtonW + 14, SnipUi.ButtonH),
+            ToolTipText = "Numbered step — click to place, arrow to pick shape / reset the count",
+        };
+        _stepBtn.ButtonClick += (_, _) => SelectTool(SnipCanvas.ToolKind.Step);
+
+        foreach (var (shape, name) in new[]
+        {
+            (StepShape.Circle, "Circle"),
+            (StepShape.Square, "Square"),
+            (StepShape.RoundedSquare, "Rounded box"),
+        })
+        {
+            var mi = new ToolStripMenuItem(name) { Tag = shape, Checked = shape == _currentStepShape };
+            mi.Click += (_, _) =>
+            {
+                _currentStepShape = shape;
+                _canvas.StepShape = shape;
+                foreach (ToolStripItem it in _stepBtn.DropDownItems)
+                    if (it is ToolStripMenuItem m && m.Tag is StepShape sk) m.Checked = sk == shape;
+                SelectTool(SnipCanvas.ToolKind.Step);
+            };
+            _stepBtn.DropDownItems.Add(mi);
+        }
+
+        _stepBtn.DropDownItems.Add(new ToolStripSeparator());
+        var reset = new ToolStripMenuItem("Reset numbering to 1");
+        reset.Click += (_, _) => _canvas.ResetStepNumber();
+        _stepBtn.DropDownItems.Add(reset);
+
+        ts.Items.Add(_stepBtn);
+    }
+
     private static Image ShapeIcon(SnipCanvas.ToolKind k) => k switch
     {
         SnipCanvas.ToolKind.Rectangle => ToolIcons.Rectangle(),
@@ -106,7 +149,7 @@ internal sealed class DrawingToolbar
         _colorBtn = new ToolStripDropDownButton
         {
             DisplayStyle = ToolStripItemDisplayStyle.Image,
-            Image = SnipUi.Swatch(Color.Yellow),
+            Image = SnipUi.Swatch(Color.DodgerBlue),
             AutoSize = false,
             Size = new Size(SnipUi.ButtonW + 14, SnipUi.ButtonH),
             ToolTipText = "Colour",
