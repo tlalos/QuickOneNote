@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace QuickOneNote;
 
@@ -53,7 +54,107 @@ internal static class NativeMethods
                 try { g.ReleaseHdc(dst); } catch { /* already released on the fallback path */ }
             }
         }
+
+        // A plain framebuffer read (even with CAPTUREBLT) can't reach the pixels of a
+        // GPU-composited console over a remote-desktop session — they come back scrambled. Ask the
+        // console window itself to paint into a DC via PrintWindow(PW_RENDERFULLCONTENT) and lay
+        // that over the affected region.
+        OverlayForegroundConsole(bmp, area);
         return bmp;
+    }
+
+    // ----- Console overlay (PrintWindow) -----
+    [DllImport("user32.dll")]
+    private static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT { public int X, Y; }
+
+    private const uint PW_RENDERFULLCONTENT = 0x00000002;
+
+    // Window classes that render their text through the GPU (Direct2D/DirectComposition) and so
+    // capture as scrambled/black via a framebuffer blit in a remote session.
+    private static readonly string[] ConsoleClasses =
+    {
+        "ConsoleWindowClass",             // cmd.exe / powershell.exe (conhost)
+        "CASCADIA_HOSTING_WINDOW_CLASS",  // Windows Terminal
+        "PseudoConsoleWindow",
+    };
+
+    private static string ClassOf(IntPtr hWnd)
+    {
+        var sb = new StringBuilder(256);
+        int n = GetClassName(hWnd, sb, sb.Capacity);
+        return sb.ToString(0, n);
+    }
+
+    /// <summary>
+    /// If the foreground window is a console/terminal that intersects <paramref name="area"/>,
+    /// re-render its client area with PrintWindow and paint it over the captured bitmap. Only the
+    /// foreground window is touched, so windows in front of it are never overwritten. Best-effort:
+    /// any failure leaves the original capture untouched.
+    /// </summary>
+    private static void OverlayForegroundConsole(Bitmap target, Rectangle area)
+    {
+        try
+        {
+            IntPtr hWnd = GetForegroundWindow();
+            if (hWnd == IntPtr.Zero || !IsWindowVisible(hWnd) || IsIconic(hWnd)) return;
+            if (Array.IndexOf(ConsoleClasses, ClassOf(hWnd)) < 0) return;
+            if (!GetWindowRect(hWnd, out RECT wr)) return;
+
+            int ww = wr.Right - wr.Left, wh = wr.Bottom - wr.Top;
+            if (ww <= 0 || wh <= 0) return;
+
+            // Client area in screen coordinates — we overlay only the text area, leaving the
+            // (correctly captured) title bar and border from the base blit alone.
+            if (!GetClientRect(hWnd, out RECT cr)) return;
+            var origin = new POINT { X = 0, Y = 0 };
+            if (!ClientToScreen(hWnd, ref origin)) return;
+            var client = new Rectangle(origin.X, origin.Y, cr.Right - cr.Left, cr.Bottom - cr.Top);
+            if (client.Width <= 0 || client.Height <= 0 || !client.IntersectsWith(area)) return;
+
+            using var shot = new Bitmap(ww, wh, PixelFormat.Format32bppArgb);
+            bool ok;
+            using (var wg = Graphics.FromImage(shot))
+            {
+                IntPtr hdc = wg.GetHdc();
+                ok = PrintWindow(hWnd, hdc, PW_RENDERFULLCONTENT);
+                wg.ReleaseHdc(hdc);
+            }
+            if (!ok) return;
+
+            using var g = Graphics.FromImage(target);
+            // Source sub-rect within the window shot that corresponds to the client area.
+            var srcClient = new Rectangle(client.Left - wr.Left, client.Top - wr.Top, client.Width, client.Height);
+            var dst = new Rectangle(client.Left - area.X, client.Top - area.Y, client.Width, client.Height);
+            g.DrawImage(shot, dst, srcClient, GraphicsUnit.Pixel);
+        }
+        catch
+        {
+            // Overlay is a best-effort enhancement; never let it break the capture.
+        }
     }
 
     // ----- Global hotkey -----

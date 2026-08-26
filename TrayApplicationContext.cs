@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace QuickOneNote;
@@ -38,7 +39,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         {
             Icon = IconFactory.CreateNoteIcon(),
             Visible = true,
-            Text = "QuickOneNote",
+            Text = $"QuickOneNote v{AppVersion}",
             ContextMenuStrip = BuildMenu(),
         };
         _tray.DoubleClick += (_, _) => CaptureSelectionNow();
@@ -67,9 +68,25 @@ public sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    /// <summary>Human-readable app version, e.g. "1.1.0" (from the assembly's informational version).</summary>
+    public static string AppVersion
+    {
+        get
+        {
+            var info = Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            // Strip any build metadata suffix (e.g. "1.1.0+abc123").
+            if (!string.IsNullOrEmpty(info)) return info.Split('+')[0];
+            return Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
+        }
+    }
+
     private ContextMenuStrip BuildMenu()
     {
         var menu = new ContextMenuStrip();
+        var header = new ToolStripMenuItem($"QuickOneNote  v{AppVersion}") { Enabled = false };
+        menu.Items.Add(header);
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Add selection to OneNote (text)", null, (_, _) => CaptureSelectionNow());
         menu.Items.Add("Add clipboard to OneNote (image/screenshot)", null, (_, _) => CaptureClipboardNow());
         menu.Items.Add("Capture full screen to OneNote", null, (_, _) => CaptureScreenNow());
