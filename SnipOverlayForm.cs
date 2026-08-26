@@ -27,9 +27,10 @@ public sealed class SnipOverlayForm : Form
     public SnipOverlayForm()
     {
         _virtual = SystemInformation.VirtualScreen;
-        // BitBlt with CAPTUREBLT so GPU-composited windows (cmd / PowerShell / Terminal), including
-        // over a remote-desktop viewer, are captured correctly instead of black/scrambled.
-        _frozen = NativeMethods.CaptureScreen(_virtual);
+        // Capture via Windows.Graphics.Capture so GPU-composited surfaces (a RustDesk/RDP viewer
+        // window, hardware-accelerated browsers, video, games) are captured correctly instead of
+        // black/scrambled. Falls back to a GDI blit automatically if WGC is unavailable.
+        _frozen = GraphicsCapture.CaptureArea(_virtual);
 
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;

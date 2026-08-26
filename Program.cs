@@ -6,6 +6,41 @@ namespace QuickOneNote;
 
 internal static class Program
 {
+    private static void RunWgcTest(string[] args)
+    {
+        string outPath = Path.Combine(Path.GetTempPath(), "quickonenote_wgctest.png");
+        int oi = Array.FindIndex(args, a => string.Equals(a, "--out", StringComparison.OrdinalIgnoreCase));
+        if (oi >= 0 && oi + 1 < args.Length) outPath = args[oi + 1];
+
+        var log = new System.Text.StringBuilder();
+        try
+        {
+            var bounds = Screen.PrimaryScreen!.Bounds;
+            using var bmp = GraphicsCapture.CaptureArea(bounds);
+            bmp.Save(outPath, ImageFormat.Png);
+
+            // Sample a grid of pixels to see whether the image is all-black (capture failed).
+            long nonBlack = 0, sampled = 0;
+            for (int y = 0; y < bmp.Height; y += Math.Max(1, bmp.Height / 40))
+                for (int x = 0; x < bmp.Width; x += Math.Max(1, bmp.Width / 40))
+                {
+                    var c = bmp.GetPixel(x, y);
+                    sampled++;
+                    if (c.R > 8 || c.G > 8 || c.B > 8) nonBlack++;
+                }
+
+            log.AppendLine($"Saved {bmp.Width}x{bmp.Height} to {outPath}");
+            log.AppendLine($"Non-black samples: {nonBlack}/{sampled}");
+            log.AppendLine(nonBlack > 0 ? "RESULT: OK (real image)" : "RESULT: BLACK (capture failed)");
+        }
+        catch (Exception ex)
+        {
+            log.AppendLine("RESULT: ERROR " + ex);
+        }
+
+        File.WriteAllText(Path.ChangeExtension(outPath, ".txt"), log.ToString());
+    }
+
     [STAThread]
     private static void Main(string[] args)
     {
@@ -37,6 +72,14 @@ internal static class Program
         if (args.Any(a => string.Equals(a, "--cloudtest", StringComparison.OrdinalIgnoreCase)))
         {
             RunCloudTest(args);
+            return;
+        }
+
+        // Hidden capture test: grab the primary screen via Windows.Graphics.Capture, save a PNG,
+        // and report whether it is a real (non-black) image.
+        if (args.Any(a => string.Equals(a, "--wgctest", StringComparison.OrdinalIgnoreCase)))
+        {
+            RunWgcTest(args);
             return;
         }
 

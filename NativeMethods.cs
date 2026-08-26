@@ -85,6 +85,18 @@ internal static class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromRect([In] ref RECT lprc, uint dwFlags);
+
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    /// <summary>The HMONITOR whose display area most closely contains the given screen rectangle.</summary>
+    public static IntPtr MonitorFromRect(Rectangle area)
+    {
+        var r = new RECT { Left = area.Left, Top = area.Top, Right = area.Right, Bottom = area.Bottom };
+        return MonitorFromRect(ref r, MONITOR_DEFAULTTONEAREST);
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT { public int Left, Top, Right, Bottom; }
 
