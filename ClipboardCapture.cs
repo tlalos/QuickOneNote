@@ -61,10 +61,7 @@ public static class ClipboardCapture
     {
         IntPtr fg = NativeMethods.GetForegroundWindow();
         var screen = (fg != IntPtr.Zero ? Screen.FromHandle(fg) : Screen.PrimaryScreen) ?? Screen.PrimaryScreen!;
-        var bounds = screen.Bounds;
-        using var bmp = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(bmp))
-            g.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
+        using var bmp = NativeMethods.CaptureScreen(screen.Bounds);
         return new CapturedContent(null, ToPng(bmp));
     }
 

@@ -1,3 +1,5 @@
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
 namespace QuickOneNote;
@@ -5,6 +7,55 @@ namespace QuickOneNote;
 /// <summary>Thin P/Invoke layer for global hotkeys and synthesized keystrokes.</summary>
 internal static class NativeMethods
 {
+    // ----- Screen capture (BitBlt with CAPTUREBLT) -----
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool BitBlt(IntPtr hdcDest, int xDest, int yDest, int w, int h,
+        IntPtr hdcSrc, int xSrc, int ySrc, uint rop);
+
+    private const uint SRCCOPY = 0x00CC0020;
+    // Includes layered/overlay windows and forces DWM to hand over the real composited pixels.
+    // Without it, GPU-composited windows (cmd / PowerShell / Windows Terminal), especially over a
+    // remote-desktop viewer, come back black or scrambled.
+    private const uint CAPTUREBLT = 0x40000000;
+
+    /// <summary>
+    /// Capture a region of the screen using GDI BitBlt with the CAPTUREBLT flag. More robust than
+    /// <see cref="System.Drawing.Graphics.CopyFromScreen(int,int,int,int,Size)"/> for hardware-
+    /// accelerated windows and remote sessions.
+    /// </summary>
+    public static Bitmap CaptureScreen(Rectangle area)
+    {
+        var bmp = new Bitmap(area.Width, area.Height, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            IntPtr dst = g.GetHdc();
+            IntPtr src = GetDC(IntPtr.Zero);
+            try
+            {
+                bool ok = BitBlt(dst, 0, 0, area.Width, area.Height, src, area.X, area.Y, SRCCOPY | CAPTUREBLT);
+                if (!ok)
+                {
+                    // Fall back to a plain blit if CAPTUREBLT is unsupported for this surface.
+                    g.ReleaseHdc(dst);
+                    g.CopyFromScreen(area.X, area.Y, 0, 0, area.Size, CopyPixelOperation.SourceCopy);
+                    return bmp;
+                }
+            }
+            finally
+            {
+                if (src != IntPtr.Zero) ReleaseDC(IntPtr.Zero, src);
+                try { g.ReleaseHdc(dst); } catch { /* already released on the fallback path */ }
+            }
+        }
+        return bmp;
+    }
+
     // ----- Global hotkey -----
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);

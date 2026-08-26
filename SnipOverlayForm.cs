@@ -27,9 +27,9 @@ public sealed class SnipOverlayForm : Form
     public SnipOverlayForm()
     {
         _virtual = SystemInformation.VirtualScreen;
-        _frozen = new Bitmap(_virtual.Width, _virtual.Height, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(_frozen))
-            g.CopyFromScreen(_virtual.X, _virtual.Y, 0, 0, _virtual.Size, CopyPixelOperation.SourceCopy);
+        // BitBlt with CAPTUREBLT so GPU-composited windows (cmd / PowerShell / Terminal), including
+        // over a remote-desktop viewer, are captured correctly instead of black/scrambled.
+        _frozen = NativeMethods.CaptureScreen(_virtual);
 
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
