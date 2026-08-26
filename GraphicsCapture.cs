@@ -32,8 +32,13 @@ internal static class GraphicsCapture
     {
         try
         {
-            if (!GraphicsCaptureSession.IsSupported())
+            bool supported = GraphicsCaptureSession.IsSupported();
+            CaptureLog.Write($"CaptureArea {area.Width}x{area.Height} at ({area.X},{area.Y}); WGC supported={supported}; monitors={Screen.AllScreens.Length}");
+            if (!supported)
+            {
+                CaptureLog.Write("-> FALLBACK to GDI blit (WGC not supported)");
                 return NativeMethods.CaptureScreen(area);
+            }
 
             var monitors = new List<(Rectangle bounds, Bitmap shot)>();
             foreach (var screen in Screen.AllScreens)
@@ -43,14 +48,20 @@ internal static class GraphicsCapture
                 Bitmap? shot = CaptureMonitor(hMon);
                 if (shot == null)
                 {
+                    CaptureLog.Write($"-> FALLBACK to GDI blit (WGC failed for monitor {screen.Bounds.Width}x{screen.Bounds.Height})");
                     foreach (var (_, s) in monitors) s.Dispose();
                     return NativeMethods.CaptureScreen(area);   // mixed results — use one consistent source
                 }
+                CaptureLog.Write($"   monitor {screen.Bounds.Width}x{screen.Bounds.Height} -> WGC shot {shot.Width}x{shot.Height} OK");
                 monitors.Add((screen.Bounds, shot));
             }
 
             if (monitors.Count == 0)
+            {
+                CaptureLog.Write("-> FALLBACK to GDI blit (no intersecting monitors)");
                 return NativeMethods.CaptureScreen(area);
+            }
+            CaptureLog.Write($"-> WGC composite OK from {monitors.Count} monitor(s)");
 
             var bmp = new Bitmap(area.Width, area.Height, PixelFormat.Format32bppArgb);
             using (var g = Graphics.FromImage(bmp))
@@ -68,8 +79,9 @@ internal static class GraphicsCapture
             }
             return bmp;
         }
-        catch
+        catch (Exception ex)
         {
+            CaptureLog.Write("-> FALLBACK to GDI blit (exception): " + ex.Message);
             return NativeMethods.CaptureScreen(area);
         }
     }
@@ -77,20 +89,23 @@ internal static class GraphicsCapture
     /// <summary>Capture a single monitor via WGC on a dedicated MTA thread. Null on any failure.</summary>
     private static Bitmap? CaptureMonitor(IntPtr hMonitor)
     {
-        if (hMonitor == IntPtr.Zero) return null;
+        if (hMonitor == IntPtr.Zero) { CaptureLog.Write("   CaptureMonitor: null HMONITOR"); return null; }
 
         Bitmap? result = null;
         var t = new Thread(() =>
         {
             try { result = CaptureMonitorCore(hMonitor); }
-            catch { result = null; }
+            catch (Exception ex) { CaptureLog.Write("   CaptureMonitorCore threw: " + ex.Message); result = null; }
         });
         t.SetApartmentState(ApartmentState.MTA);
         t.IsBackground = true;
         t.Start();
         // A one-shot capture completes in a few frames; cap the wait so a stuck GPU never hangs us.
         if (!t.Join(TimeSpan.FromSeconds(3)))
+        {
+            CaptureLog.Write("   CaptureMonitor: timed out after 3s");
             return null;
+        }
         return result;
     }
 
@@ -115,7 +130,7 @@ internal static class GraphicsCapture
                 hr = D3D11CreateDevice(IntPtr.Zero, D3D_DRIVER_TYPE_WARP, IntPtr.Zero,
                     D3D11_CREATE_DEVICE_BGRA_SUPPORT, IntPtr.Zero, 0, D3D11_SDK_VERSION,
                     out d3dDevice, out _, out context);
-                if (hr < 0) return null;
+                if (hr < 0) { CaptureLog.Write($"   D3D11CreateDevice failed hr=0x{hr:X8}"); return null; }
             }
 
             var iidDxgiDevice = new Guid("54ec77fa-1377-44e6-8c32-88fd5f44c84c");
@@ -144,7 +159,7 @@ internal static class GraphicsCapture
                 frame = pool.TryGetNextFrame();
                 if (frame == null) Thread.Sleep(5);
             }
-            if (frame == null) return null;
+            if (frame == null) { CaptureLog.Write("   TryGetNextFrame: no frame within timeout"); return null; }
 
             using (frame)
             {
@@ -206,16 +221,30 @@ internal static class GraphicsCapture
 
     private static GraphicsCaptureItem CreateItemForMonitor(IntPtr hMonitor)
     {
-        var interopIid = typeof(IGraphicsCaptureItemInterop).GUID;
-        int hr = RoGetActivationFactory("Windows.Graphics.Capture.GraphicsCaptureItem",
-            in interopIid, out object factory);
-        if (hr < 0) throw new COMException("RoGetActivationFactory failed", hr);
+        const string classId = "Windows.Graphics.Capture.GraphicsCaptureItem";
+        IntPtr hstr = IntPtr.Zero, factoryPtr = IntPtr.Zero;
+        try
+        {
+            // .NET's built-in HSTRING P/Invoke marshaling isn't supported, so build the HSTRING
+            // by hand and pass it as an IntPtr.
+            int hr = WindowsCreateString(classId, classId.Length, out hstr);
+            if (hr < 0) throw new COMException("WindowsCreateString failed", hr);
 
-        var interop = (IGraphicsCaptureItemInterop)factory;
-        var itemIid = new Guid("79C3F95B-31F7-4EC2-A464-632EF5D30760");   // IID of IGraphicsCaptureItem
-        IntPtr itemPtr = interop.CreateForMonitor(hMonitor, in itemIid);
-        try { return GraphicsCaptureItem.FromAbi(itemPtr); }
-        finally { if (itemPtr != IntPtr.Zero) Marshal.Release(itemPtr); }
+            var interopIid = typeof(IGraphicsCaptureItemInterop).GUID;
+            hr = RoGetActivationFactory(hstr, in interopIid, out factoryPtr);
+            if (hr < 0) throw new COMException("RoGetActivationFactory failed", hr);
+
+            var interop = (IGraphicsCaptureItemInterop)Marshal.GetObjectForIUnknown(factoryPtr);
+            var itemIid = new Guid("79C3F95B-31F7-4EC2-A464-632EF5D30760");   // IID of IGraphicsCaptureItem
+            IntPtr itemPtr = interop.CreateForMonitor(hMonitor, in itemIid);
+            try { return GraphicsCaptureItem.FromAbi(itemPtr); }
+            finally { if (itemPtr != IntPtr.Zero) Marshal.Release(itemPtr); }
+        }
+        finally
+        {
+            if (factoryPtr != IntPtr.Zero) Marshal.Release(factoryPtr);
+            if (hstr != IntPtr.Zero) WindowsDeleteString(hstr);
+        }
     }
 
     [DllImport("d3d11.dll")]
@@ -227,10 +256,14 @@ internal static class GraphicsCapture
     private static extern int CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out IntPtr graphicsDevice);
 
     [DllImport("combase.dll")]
-    private static extern int RoGetActivationFactory(
-        [MarshalAs(UnmanagedType.HString)] string activatableClassId,
-        in Guid iid,
-        [MarshalAs(UnmanagedType.IUnknown)] out object factory);
+    private static extern int RoGetActivationFactory(IntPtr activatableClassId, in Guid iid, out IntPtr factory);
+
+    [DllImport("combase.dll", CharSet = CharSet.Unicode)]
+    private static extern int WindowsCreateString([MarshalAs(UnmanagedType.LPWStr)] string sourceString,
+        int length, out IntPtr hstring);
+
+    [DllImport("combase.dll")]
+    private static extern int WindowsDeleteString(IntPtr hstring);
 
     [DllImport("combase.dll")]
     private static extern int RoInitialize(int initType);
