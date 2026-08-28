@@ -130,7 +130,7 @@ public sealed class SeriesReviewForm : Form
 
         CancelButton = cancel;
         _toolbar.SelectTool(SnipCanvas.ToolKind.Highlighter);
-        _toolbar.SelectColor(Color.DodgerBlue);
+        _toolbar.SelectColor(Color.Yellow);
     }
 
     // ----- Navigation -----

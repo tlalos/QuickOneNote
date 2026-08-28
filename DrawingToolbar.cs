@@ -149,7 +149,7 @@ internal sealed class DrawingToolbar
         _colorBtn = new ToolStripDropDownButton
         {
             DisplayStyle = ToolStripItemDisplayStyle.Image,
-            Image = SnipUi.Swatch(Color.DodgerBlue),
+            Image = SnipUi.Swatch(Color.Yellow),
             AutoSize = false,
             Size = new Size(SnipUi.ButtonW + 14, SnipUi.ButtonH),
             ToolTipText = "Colour",

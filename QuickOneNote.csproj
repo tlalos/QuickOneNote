@@ -12,8 +12,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>QuickOneNote</AssemblyName>
     <RootNamespace>QuickOneNote</RootNamespace>
-    <Version>1.2.2</Version>
-    <InformationalVersion>1.2.2</InformationalVersion>
+    <Version>1.2.3</Version>
+    <InformationalVersion>1.2.3</InformationalVersion>
     <StartupObject>QuickOneNote.Program</StartupObject>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!--
