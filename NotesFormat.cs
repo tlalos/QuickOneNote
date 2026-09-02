@@ -24,6 +24,12 @@ internal static class NotesFormat
         Callout("info", "Screenshot",
             "Captured with QuickOneNote · " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
 
+    /// <summary>
+    /// Prepend a horizontal rule (+ blank line) so an entry appended to an existing note is
+    /// clearly separated from earlier content. No-op when creating a fresh note.
+    /// </summary>
+    public static string Prepend(bool withRule, string text) => withRule ? "---\n\n" + text : text;
+
     /// <summary>Info callout used as the header of a screenshot series.</summary>
     public static string SeriesHeaderCallout(string title, int shotCount)
     {

@@ -33,8 +33,8 @@ public sealed class SeriesReviewForm : Form
     /// <summary>Raised on Submit with (title, items). Each png already has annotations baked in.</summary>
     public event Action<string, IReadOnlyList<SeriesItem>>? SubmitRequested;
 
-    /// <summary>Raised when submitting the series to Desktop Notes; carries (title, noteId, header, items).</summary>
-    public event Action<string?, string?, string, IReadOnlyList<SeriesItem>>? SubmitToNotesRequested;
+    /// <summary>Raised when submitting the series to Desktop Notes; carries (title, noteId, append, header, items).</summary>
+    public event Action<string?, string?, bool, string, IReadOnlyList<SeriesItem>>? SubmitToNotesRequested;
 
     /// <summary>Raised when the Notes menu is used but no token is configured yet.</summary>
     public event Action? ConfigureNotesRequested;
@@ -181,11 +181,11 @@ public sealed class SeriesReviewForm : Form
         }
 
         var daily = new ToolStripMenuItem($"Daily note ({DateTime.Now:yyyy-MM-dd})");
-        daily.Click += (_, _) => SubmitToNotes(DateTime.Now.ToString("yyyy-MM-dd"), null);
+        daily.Click += (_, _) => SubmitToNotes(DateTime.Now.ToString("yyyy-MM-dd"), null, append: true);
         menu.Items.Add(daily);
 
         var newNote = new ToolStripMenuItem("New note with title…");
-        newNote.Click += (_, _) => SubmitToNotes(string.IsNullOrWhiteSpace(_title.Text) ? DateTime.Now.ToString("yyyy-MM-dd HH:mm") : _title.Text.Trim(), null);
+        newNote.Click += (_, _) => SubmitToNotes(string.IsNullOrWhiteSpace(_title.Text) ? DateTime.Now.ToString("yyyy-MM-dd HH:mm") : _title.Text.Trim(), null, append: false);
         menu.Items.Add(newNote);
 
         menu.Items.Add(new ToolStripSeparator());
@@ -207,7 +207,7 @@ public sealed class SeriesReviewForm : Form
                 string title = note.Title;
                 string? id = note.Id;
                 var mi = new ToolStripMenuItem(title);
-                mi.Click += (_, _) => SubmitToNotes(title, id);
+                mi.Click += (_, _) => SubmitToNotes(title, id, append: true);
                 menu.Items.Add(mi);
             }
         }
@@ -215,11 +215,11 @@ public sealed class SeriesReviewForm : Form
         menu.Show(anchor, new Point(0, anchor.Height));
     }
 
-    private void SubmitToNotes(string? targetTitle, string? noteId)
+    private void SubmitToNotes(string? targetTitle, string? noteId, bool append)
     {
         _items[_index].Caption = _caption.Text;
         var payload = BuildPayload();
-        SubmitToNotesRequested?.Invoke(targetTitle, noteId, _title.Text.Trim(), payload);
+        SubmitToNotesRequested?.Invoke(targetTitle, noteId, append, _title.Text.Trim(), payload);
         DialogResult = DialogResult.OK;
         Close();
     }

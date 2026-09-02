@@ -237,8 +237,8 @@ public sealed class TrayApplicationContext : ApplicationContext
             editor.NotesConfigured = _settings.NotesConfigured;
             editor.NotesLister = SafeListNotes;
             editor.ConfigureNotesRequested += () => OpenSettings();
-            editor.SendToNotesRequested += (title, noteId, png) =>
-                RunNotesSend(title, noteId, NotesFormat.ScreenshotCallout(), png);
+            editor.SendToNotesRequested += (title, noteId, append, png) =>
+                RunNotesSend(title, noteId, NotesFormat.Prepend(append, NotesFormat.ScreenshotCallout()), png);
             editor.Show();
             editor.Activate();
         }
@@ -291,7 +291,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         review.NotesConfigured = _settings.NotesConfigured;
         review.NotesLister = SafeListNotes;
         review.ConfigureNotesRequested += () => OpenSettings();
-        review.SubmitToNotesRequested += (title, noteId, header, items) => RunNotesSeriesSend(title, noteId, header, items);
+        review.SubmitToNotesRequested += (title, noteId, append, header, items) => RunNotesSeriesSend(title, noteId, append, header, items);
         review.Show();
         review.Activate();
     }
@@ -392,7 +392,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         thread.Start();
     }
 
-    private void RunNotesSeriesSend(string? title, string? noteId, string header, IReadOnlyList<SeriesItem> items)
+    private void RunNotesSeriesSend(string? title, string? noteId, bool append, string header, IReadOnlyList<SeriesItem> items)
     {
         if (items.Count == 0) return;
         if (!EnsureNotesConfigured()) return;
@@ -411,8 +411,9 @@ public sealed class TrayApplicationContext : ApplicationContext
                 Report(success: true, $"Sending {what} to Desktop Notes…");
                 var client = new NotesClient(settings.NotesBaseUrlOrDefault, settings.NotesApiToken!);
 
-                // Header first (as an info callout), then each captioned shot — all to the same note.
-                client.SendAsync(title, noteId, NotesFormat.SeriesHeaderCallout(header, items.Count), null)
+                // Header first (as an info callout, separated from earlier content when appending),
+                // then each captioned shot — all to the same note.
+                client.SendAsync(title, noteId, NotesFormat.Prepend(append, NotesFormat.SeriesHeaderCallout(header, items.Count)), null)
                     .GetAwaiter().GetResult();
                 foreach (var item in items)
                     client.SendAsync(title, noteId, item.Caption, item.Png).GetAwaiter().GetResult();

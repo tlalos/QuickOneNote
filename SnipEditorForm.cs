@@ -30,8 +30,8 @@ public sealed class SnipEditorForm : Form
     /// <summary>Raised when the user OCRs the snip and sends the recognised text to OneNote.</summary>
     public event Action<string>? SendTextRequested;
 
-    /// <summary>Raised when the user sends the snip to Desktop Notes; carries (title, noteId, png).</summary>
-    public event Action<string?, string?, byte[]>? SendToNotesRequested;
+    /// <summary>Raised when the user sends the snip to Desktop Notes; carries (title, noteId, append, png).</summary>
+    public event Action<string?, string?, bool, byte[]>? SendToNotesRequested;
 
     /// <summary>Raised when the Notes menu is used but no token is configured yet.</summary>
     public event Action? ConfigureNotesRequested;
@@ -202,11 +202,11 @@ public sealed class SnipEditorForm : Form
         }
 
         var daily = new ToolStripMenuItem($"Daily note ({DateTime.Now:yyyy-MM-dd})");
-        daily.Click += (_, _) => SendToNotes(DateTime.Now.ToString("yyyy-MM-dd"), null);
+        daily.Click += (_, _) => SendToNotes(DateTime.Now.ToString("yyyy-MM-dd"), null, append: true);
         b.DropDownItems.Add(daily);
 
         var newNote = new ToolStripMenuItem("New note with title…");
-        newNote.Click += (_, _) => { var t = PromptForTitle("Title for the new note:", ""); if (!string.IsNullOrWhiteSpace(t)) SendToNotes(t!.Trim(), null); };
+        newNote.Click += (_, _) => { var t = PromptForTitle("Title for the new note:", ""); if (!string.IsNullOrWhiteSpace(t)) SendToNotes(t!.Trim(), null, append: false); };
         b.DropDownItems.Add(newNote);
 
         b.DropDownItems.Add(new ToolStripSeparator());
@@ -228,18 +228,18 @@ public sealed class SnipEditorForm : Form
                 string title = note.Title;
                 string? id = note.Id;
                 var mi = new ToolStripMenuItem(title);
-                mi.Click += (_, _) => SendToNotes(title, id);
+                mi.Click += (_, _) => SendToNotes(title, id, append: true);
                 b.DropDownItems.Add(mi);
             }
         }
     }
 
-    private void SendToNotes(string? title, string? noteId)
+    private void SendToNotes(string? title, string? noteId, bool append)
     {
         using var ms = new MemoryStream();
         using (var bmp = _canvas.Render())
             bmp.Save(ms, ImageFormat.Png);
-        SendToNotesRequested?.Invoke(title, noteId, ms.ToArray());
+        SendToNotesRequested?.Invoke(title, noteId, append, ms.ToArray());
         Close();
     }
 
