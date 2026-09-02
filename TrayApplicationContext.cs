@@ -237,7 +237,8 @@ public sealed class TrayApplicationContext : ApplicationContext
             editor.NotesConfigured = _settings.NotesConfigured;
             editor.NotesLister = SafeListNotes;
             editor.ConfigureNotesRequested += () => OpenSettings();
-            editor.SendToNotesRequested += (title, noteId, png) => RunNotesSend(title, noteId, null, png);
+            editor.SendToNotesRequested += (title, noteId, png) =>
+                RunNotesSend(title, noteId, NotesFormat.ScreenshotCallout(), png);
             editor.Show();
             editor.Activate();
         }
@@ -410,9 +411,9 @@ public sealed class TrayApplicationContext : ApplicationContext
                 Report(success: true, $"Sending {what} to Desktop Notes…");
                 var client = new NotesClient(settings.NotesBaseUrlOrDefault, settings.NotesApiToken!);
 
-                // Header first (as a text line), then each captioned shot — all to the same note.
-                if (!string.IsNullOrWhiteSpace(header))
-                    client.SendAsync(title, noteId, header, null).GetAwaiter().GetResult();
+                // Header first (as an info callout), then each captioned shot — all to the same note.
+                client.SendAsync(title, noteId, NotesFormat.SeriesHeaderCallout(header, items.Count), null)
+                    .GetAwaiter().GetResult();
                 foreach (var item in items)
                     client.SendAsync(title, noteId, item.Caption, item.Png).GetAwaiter().GetResult();
 
