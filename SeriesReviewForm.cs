@@ -33,6 +33,22 @@ public sealed class SeriesReviewForm : Form
     /// <summary>Raised on Submit with (title, items). Each png already has annotations baked in.</summary>
     public event Action<string, IReadOnlyList<SeriesItem>>? SubmitRequested;
 
+    /// <summary>Raised when submitting the series to Desktop Notes; carries (title, noteId, header, items).</summary>
+    public event Action<string?, string?, string, IReadOnlyList<SeriesItem>>? SubmitToNotesRequested;
+
+    /// <summary>Raised when the Notes menu is used but no token is configured yet.</summary>
+    public event Action? ConfigureNotesRequested;
+
+    /// <summary>True when a Desktop Notes token is configured (enables the Notes menu).</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool NotesConfigured { get; set; }
+
+    /// <summary>Supplies the list of existing Notes (called on a background thread).</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Func<IReadOnlyList<NoteRef>>? NotesLister { get; set; }
+
+    private IReadOnlyList<NoteRef>? _notesCache;
+
     public SeriesReviewForm(IEnumerable<Bitmap> shots)
     {
         _items = shots.Select(b => new Item(b)).ToList();
@@ -117,10 +133,13 @@ public sealed class SeriesReviewForm : Form
         var right = new FlowLayoutPanel { Dock = DockStyle.Right, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, WrapContents = false };
         var submit = new Button { Text = "Submit to OneNote", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Height = 34, Font = new Font("Segoe UI", 9f, FontStyle.Bold), Padding = new Padding(12, 0, 12, 0), Margin = new Padding(6, 0, 0, 0) };
         submit.Click += (_, _) => DoSubmit();
+        var toNotes = new Button { Text = "Send to Notes ▾", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Height = 34, Padding = new Padding(10, 0, 10, 0), Margin = new Padding(6, 0, 0, 0) };
+        toNotes.Click += (_, _) => ShowNotesMenu(toNotes);
         var cancel = new Button { Text = "Cancel", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Height = 34, DialogResult = DialogResult.Cancel, Padding = new Padding(10, 0, 10, 0), Margin = new Padding(6, 0, 0, 0) };
         var delete = new Button { Text = "Delete shot", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Height = 34, Padding = new Padding(8, 0, 8, 0), Margin = new Padding(6, 0, 0, 0) };
         delete.Click += (_, _) => DeleteCurrent();
         right.Controls.Add(submit);
+        right.Controls.Add(toNotes);
         right.Controls.Add(cancel);
         right.Controls.Add(delete);
 
@@ -131,6 +150,78 @@ public sealed class SeriesReviewForm : Form
         CancelButton = cancel;
         _toolbar.SelectTool(SnipCanvas.ToolKind.Highlighter);
         _toolbar.SelectColor(Color.Yellow);
+
+        // Warm the existing-notes list so the "Send to Notes" menu opens ready.
+        Shown += (_, _) => PrefetchNotes();
+    }
+
+    // ----- Desktop Notes -----
+
+    private void PrefetchNotes()
+    {
+        if (!NotesConfigured || NotesLister is not { } lister) return;
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try { var list = lister(); if (!IsDisposed) _notesCache = list; }
+            catch { _notesCache = Array.Empty<NoteRef>(); }
+        });
+    }
+
+    private void ShowNotesMenu(Button anchor)
+    {
+        var menu = new ContextMenuStrip();
+
+        if (!NotesConfigured)
+        {
+            var setup = new ToolStripMenuItem("Set up Desktop Notes in Settings…");
+            setup.Click += (_, _) => ConfigureNotesRequested?.Invoke();
+            menu.Items.Add(setup);
+            menu.Show(anchor, new Point(0, anchor.Height));
+            return;
+        }
+
+        var daily = new ToolStripMenuItem($"Daily note ({DateTime.Now:yyyy-MM-dd})");
+        daily.Click += (_, _) => SubmitToNotes(DateTime.Now.ToString("yyyy-MM-dd"), null);
+        menu.Items.Add(daily);
+
+        var newNote = new ToolStripMenuItem("New note with title…");
+        newNote.Click += (_, _) => SubmitToNotes(string.IsNullOrWhiteSpace(_title.Text) ? DateTime.Now.ToString("yyyy-MM-dd HH:mm") : _title.Text.Trim(), null);
+        menu.Items.Add(newNote);
+
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripMenuItem("Append to an existing note:") { Enabled = false });
+
+        if (_notesCache == null)
+        {
+            menu.Items.Add(new ToolStripMenuItem("Loading… (reopen in a moment)") { Enabled = false });
+            PrefetchNotes();
+        }
+        else if (_notesCache.Count == 0)
+        {
+            menu.Items.Add(new ToolStripMenuItem("No existing notes found") { Enabled = false });
+        }
+        else
+        {
+            foreach (var note in _notesCache.Take(40))
+            {
+                string title = note.Title;
+                string? id = note.Id;
+                var mi = new ToolStripMenuItem(title);
+                mi.Click += (_, _) => SubmitToNotes(title, id);
+                menu.Items.Add(mi);
+            }
+        }
+
+        menu.Show(anchor, new Point(0, anchor.Height));
+    }
+
+    private void SubmitToNotes(string? targetTitle, string? noteId)
+    {
+        _items[_index].Caption = _caption.Text;
+        var payload = BuildPayload();
+        SubmitToNotesRequested?.Invoke(targetTitle, noteId, _title.Text.Trim(), payload);
+        DialogResult = DialogResult.OK;
+        Close();
     }
 
     // ----- Navigation -----
@@ -175,7 +266,14 @@ public sealed class SeriesReviewForm : Form
     private void DoSubmit()
     {
         _items[_index].Caption = _caption.Text;
+        SubmitRequested?.Invoke(_title.Text.Trim(), BuildPayload());
+        DialogResult = DialogResult.OK;
+        Close();
+    }
 
+    /// <summary>Render every shot (with annotations baked in) + its caption into send-ready items.</summary>
+    private List<SeriesItem> BuildPayload()
+    {
         var payload = new List<SeriesItem>(_items.Count);
         foreach (var item in _items)
         {
@@ -184,10 +282,7 @@ public sealed class SeriesReviewForm : Form
             rendered.Save(ms, ImageFormat.Png);
             payload.Add(new SeriesItem(string.IsNullOrWhiteSpace(item.Caption) ? null : item.Caption.Trim(), ms.ToArray()));
         }
-
-        SubmitRequested?.Invoke(_title.Text.Trim(), payload);
-        DialogResult = DialogResult.OK;
-        Close();
+        return payload;
     }
 
     protected override void Dispose(bool disposing)

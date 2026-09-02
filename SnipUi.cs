@@ -25,6 +25,7 @@ internal static class SnipUi
     public static readonly string GlyphColorPicker = ((char)0xEF3C).ToString();
     public static readonly string GlyphClose = ((char)0xE8BB).ToString();
     public static readonly string GlyphRedo = ((char)0xE7A6).ToString();
+    public static readonly string GlyphNotes = ((char)0xE70B).ToString();       // QuickNote
 
     public static readonly string IconFont = PickIconFont();
 

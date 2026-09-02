@@ -146,6 +146,39 @@ public sealed class AppSettings
     /// <summary>Auto-save every captured screenshot to Pictures\Screenshots (like the Snipping Tool).</summary>
     public bool SaveScreenshots { get; set; } = true;
 
+    // ----- Desktop Notes (Capture API) -----
+
+    /// <summary>Base URL of the Desktop Notes Capture API. Falls back to the public default.</summary>
+    public string? NotesApiBaseUrl { get; set; }
+
+    /// <summary>Bearer token for the Notes Capture API, DPAPI-encrypted (base64) at rest.</summary>
+    public string? NotesApiTokenProtected { get; set; }
+
+    [JsonIgnore]
+    public string NotesBaseUrlOrDefault =>
+        string.IsNullOrWhiteSpace(NotesApiBaseUrl) ? NotesClient.DefaultBaseUrl : NotesApiBaseUrl.TrimEnd('/');
+
+    /// <summary>Plaintext accessor for the Notes token; encrypts/decrypts via DPAPI transparently.</summary>
+    [JsonIgnore]
+    public string? NotesApiToken
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(NotesApiTokenProtected)) return null;
+            try { return System.Text.Encoding.UTF8.GetString(DpapiProtect.Unprotect(Convert.FromBase64String(NotesApiTokenProtected))); }
+            catch { return null; }
+        }
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) { NotesApiTokenProtected = null; return; }
+            try { NotesApiTokenProtected = Convert.ToBase64String(DpapiProtect.Protect(System.Text.Encoding.UTF8.GetBytes(value))); }
+            catch { NotesApiTokenProtected = null; }
+        }
+    }
+
+    [JsonIgnore]
+    public bool NotesConfigured => !string.IsNullOrWhiteSpace(NotesApiToken);
+
     [JsonIgnore]
     public bool IsConfigured => !string.IsNullOrEmpty(SectionId);
 

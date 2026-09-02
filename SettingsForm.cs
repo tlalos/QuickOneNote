@@ -29,6 +29,8 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _notifications = new();
     private readonly CheckBox _autostart = new();
     private readonly CheckBox _saveShots = new();
+    private readonly TextBox _notesUrl = new();
+    private readonly TextBox _notesToken = new();
 
     private HotkeyConfig _pendingHotkey;
     private HotkeyConfig _pendingClipHotkey;
@@ -57,6 +59,8 @@ public sealed class SettingsForm : Form
             SeriesHotkey = new HotkeyConfig { Modifiers = current.SeriesHotkey.Modifiers, VirtualKey = current.SeriesHotkey.VirtualKey },
             ShowNotifications = current.ShowNotifications,
             SaveScreenshots = current.SaveScreenshots,
+            NotesApiBaseUrl = current.NotesApiBaseUrl,
+            NotesApiTokenProtected = current.NotesApiTokenProtected,
         };
         _pendingHotkey = _working.Hotkey;
         _pendingClipHotkey = _working.ClipboardHotkey;
@@ -71,6 +75,8 @@ public sealed class SettingsForm : Form
         _notifications.Checked = _working.ShowNotifications;
         _saveShots.Checked = _working.SaveScreenshots;
         _autostart.Checked = Startup.IsEnabled();
+        _notesUrl.Text = _working.NotesApiBaseUrl ?? "";
+        _notesToken.Text = _working.NotesApiToken ?? "";
         _hotkeyBox.Text = _working.Hotkey.Display;
         _clipHotkeyBox.Text = _working.ClipboardHotkey.Display;
         _screenshotHotkeyBox.Text = _working.ScreenshotHotkey.Display;
@@ -91,7 +97,12 @@ public sealed class SettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(460, 854);
+        ClientSize = new Size(460, 992);
+        // On smaller or DPI-scaled displays the tall dialog may exceed the work area; let it scroll
+        // rather than clipping the buttons at the bottom.
+        AutoScroll = true;
+        var work = Screen.FromPoint(Cursor.Position).WorkingArea;
+        if (Height > work.Height) Height = work.Height - 20;
         Icon = IconFactory.CreateNoteIcon();
 
         int x = 16, w = 428;
@@ -192,9 +203,25 @@ public sealed class SettingsForm : Form
         _autostart.Location = new Point(x, 766);
         _autostart.AutoSize = true;
 
-        var ok = new Button { Text = "Save", Location = new Point(w - 74 + x, 808), Size = new Size(90, 30) };
+        var lblNotes = new Label
+        {
+            Text = "Desktop Notes (Capture API) — optional second target",
+            Location = new Point(x, 800),
+            AutoSize = true,
+            Font = new Font(Font, FontStyle.Bold),
+        };
+        var lblNotesToken = new Label { Text = "API token (from the Notes app → Settings):", Location = new Point(x, 826), AutoSize = true };
+        _notesToken.Location = new Point(x, 848);
+        _notesToken.Width = w;
+        _notesToken.UseSystemPasswordChar = true;
+        var lblNotesUrl = new Label { Text = "Server URL (leave blank for the default):", Location = new Point(x, 880), AutoSize = true };
+        _notesUrl.Location = new Point(x, 902);
+        _notesUrl.Width = w;
+        _notesUrl.PlaceholderText = NotesClient.DefaultBaseUrl;
+
+        var ok = new Button { Text = "Save", Location = new Point(w - 74 + x, 946), Size = new Size(90, 30) };
         ok.Click += Ok_Click;
-        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(w - 170 + x, 808), Size = new Size(90, 30) };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(w - 170 + x, 946), Size = new Size(90, 30) };
 
         Controls.AddRange(new Control[]
         {
@@ -204,7 +231,8 @@ public sealed class SettingsForm : Form
             lblMode, _mode,
             lblHotkey, _hotkeyBox, lblClipHotkey, _clipHotkeyBox, lblScreenHotkey, _screenshotHotkeyBox,
             lblSnipHotkey, _snipHotkeyBox, lblSeriesHotkey, _seriesHotkeyBox,
-            _notifications, _saveShots, _autostart, ok, cancel,
+            _notifications, _saveShots, _autostart,
+            lblNotes, lblNotesToken, _notesToken, lblNotesUrl, _notesUrl, ok, cancel,
         });
 
         const string hotkeyTip = "Click and press a key combination (must include Ctrl, Shift, or Alt). Press Delete to clear and disable this shortcut.";
@@ -408,6 +436,8 @@ public sealed class SettingsForm : Form
         _working.SeriesHotkey = _pendingSeriesHotkey;
         _working.ShowNotifications = _notifications.Checked;
         _working.SaveScreenshots = _saveShots.Checked;
+        _working.NotesApiBaseUrl = string.IsNullOrWhiteSpace(_notesUrl.Text) ? null : _notesUrl.Text.Trim();
+        _working.NotesApiToken = string.IsNullOrWhiteSpace(_notesToken.Text) ? null : _notesToken.Text.Trim();
 
         // Apply the run-at-login registry entry immediately.
         Startup.Set(_autostart.Checked);

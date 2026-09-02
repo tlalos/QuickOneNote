@@ -30,6 +30,22 @@ public sealed class SnipEditorForm : Form
     /// <summary>Raised when the user OCRs the snip and sends the recognised text to OneNote.</summary>
     public event Action<string>? SendTextRequested;
 
+    /// <summary>Raised when the user sends the snip to Desktop Notes; carries (title, noteId, png).</summary>
+    public event Action<string?, string?, byte[]>? SendToNotesRequested;
+
+    /// <summary>Raised when the Notes menu is used but no token is configured yet.</summary>
+    public event Action? ConfigureNotesRequested;
+
+    /// <summary>True when a Desktop Notes token is configured (enables the Notes menu).</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool NotesConfigured { get; set; }
+
+    /// <summary>Supplies the list of existing Notes (called on a background thread).</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Func<IReadOnlyList<NoteRef>>? NotesLister { get; set; }
+
+    private IReadOnlyList<NoteRef>? _notesCache;
+
     public SnipEditorForm(Bitmap image, bool seriesActive = false)
     {
         _image = image;
@@ -92,6 +108,8 @@ public sealed class SnipEditorForm : Form
         send.Click += (_, _) => DoSend();
         tools.Items.Add(send);
 
+        tools.Items.Add(BuildNotesButton());
+
         var titled = new ToolStripButton
         {
             Image = ToolIcons.Title(),
@@ -137,6 +155,92 @@ public sealed class SnipEditorForm : Form
             if (e.Control && e.KeyCode == Keys.Z) { _canvas.Undo(); e.Handled = true; }
             else if (e.Control && e.KeyCode == Keys.Y) { _canvas.Redo(); e.Handled = true; }
         };
+
+        // Warm the existing-notes list in the background so the Notes dropdown opens instantly.
+        Shown += (_, _) => PrefetchNotes();
+    }
+
+    // ----- Desktop Notes -----
+
+    private ToolStripDropDownButton BuildNotesButton()
+    {
+        var b = new ToolStripDropDownButton
+        {
+            Text = SnipUi.GlyphNotes,
+            Font = new Font(SnipUi.IconFont, 16f),
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+            Alignment = ToolStripItemAlignment.Right,
+            AutoSize = false,
+            Size = new Size(SnipUi.ButtonW + 16, SnipUi.ButtonH),
+            ForeColor = Color.FromArgb(16, 122, 90),
+            ToolTipText = "Send to Desktop Notes",
+        };
+        b.DropDownOpening += (_, _) => PopulateNotesMenu(b);
+        return b;
+    }
+
+    private void PrefetchNotes()
+    {
+        if (!NotesConfigured || NotesLister is not { } lister) return;
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try { var list = lister(); if (!IsDisposed) _notesCache = list; }
+            catch { _notesCache = Array.Empty<NoteRef>(); }
+        });
+    }
+
+    private void PopulateNotesMenu(ToolStripDropDownButton b)
+    {
+        b.DropDownItems.Clear();
+
+        if (!NotesConfigured)
+        {
+            var setup = new ToolStripMenuItem("Set up Desktop Notes in Settings…");
+            setup.Click += (_, _) => ConfigureNotesRequested?.Invoke();
+            b.DropDownItems.Add(setup);
+            return;
+        }
+
+        var daily = new ToolStripMenuItem($"Daily note ({DateTime.Now:yyyy-MM-dd})");
+        daily.Click += (_, _) => SendToNotes(DateTime.Now.ToString("yyyy-MM-dd"), null);
+        b.DropDownItems.Add(daily);
+
+        var newNote = new ToolStripMenuItem("New note with title…");
+        newNote.Click += (_, _) => { var t = PromptForTitle("Title for the new note:", ""); if (!string.IsNullOrWhiteSpace(t)) SendToNotes(t!.Trim(), null); };
+        b.DropDownItems.Add(newNote);
+
+        b.DropDownItems.Add(new ToolStripSeparator());
+        b.DropDownItems.Add(new ToolStripMenuItem("Append to an existing note:") { Enabled = false });
+
+        if (_notesCache == null)
+        {
+            b.DropDownItems.Add(new ToolStripMenuItem("Loading… (reopen in a moment)") { Enabled = false });
+            PrefetchNotes();
+        }
+        else if (_notesCache.Count == 0)
+        {
+            b.DropDownItems.Add(new ToolStripMenuItem("No existing notes found") { Enabled = false });
+        }
+        else
+        {
+            foreach (var note in _notesCache.Take(40))
+            {
+                string title = note.Title;
+                string? id = note.Id;
+                var mi = new ToolStripMenuItem(title);
+                mi.Click += (_, _) => SendToNotes(title, id);
+                b.DropDownItems.Add(mi);
+            }
+        }
+    }
+
+    private void SendToNotes(string? title, string? noteId)
+    {
+        using var ms = new MemoryStream();
+        using (var bmp = _canvas.Render())
+            bmp.Save(ms, ImageFormat.Png);
+        SendToNotesRequested?.Invoke(title, noteId, ms.ToArray());
+        Close();
     }
 
     protected override void OnLoad(EventArgs e)
@@ -350,7 +454,7 @@ public sealed class SnipEditorForm : Form
         Close();
     }
 
-    private string? PromptForTitle()
+    private string? PromptForTitle(string label = "Title for this note (starts a new titled section):", string? initial = null)
     {
         using var dlg = new Form
         {
@@ -362,14 +466,14 @@ public sealed class SnipEditorForm : Form
             ClientSize = new Size(380, 128),
             Icon = IconFactory.CreateNoteIcon(),
         };
-        var lbl = new Label { Text = "Title for this note (starts a new titled section):", Location = new Point(12, 14), AutoSize = true };
+        var lbl = new Label { Text = label, Location = new Point(12, 14), AutoSize = true };
         var tb = new TextBox
         {
             Location = new Point(12, 40),
             Width = 356,
             Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
             Font = new Font("Segoe UI", 10f),
-            Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+            Text = initial ?? DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
         };
         var ok = new Button { Text = "Send", DialogResult = DialogResult.OK, Size = new Size(84, 30), Location = new Point(196, 84), Anchor = AnchorStyles.Right | AnchorStyles.Bottom };
         var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Size = new Size(84, 30), Location = new Point(284, 84), Anchor = AnchorStyles.Right | AnchorStyles.Bottom };

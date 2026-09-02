@@ -46,6 +46,7 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
 
+
         // Hidden live self-test: enumerate sections and append a test note (text + image),
         // writing the outcome to a file. Used for verification; no GUI.
         if (args.Any(a => string.Equals(a, "--selftest", StringComparison.OrdinalIgnoreCase)))

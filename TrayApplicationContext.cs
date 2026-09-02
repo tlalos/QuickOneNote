@@ -234,6 +234,10 @@ public sealed class TrayApplicationContext : ApplicationContext
             editor.SendTextRequested += text =>
                 RunCapture(() => new CapturedContent(text, null), "No text to send.", "text");
             editor.ReselectRequested += () => StartSnip();   // re-snip: StartSnip hides/replaces this editor
+            editor.NotesConfigured = _settings.NotesConfigured;
+            editor.NotesLister = SafeListNotes;
+            editor.ConfigureNotesRequested += () => OpenSettings();
+            editor.SendToNotesRequested += (title, noteId, png) => RunNotesSend(title, noteId, null, png);
             editor.Show();
             editor.Activate();
         }
@@ -283,6 +287,10 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         var review = new SeriesReviewForm(shots);
         review.SubmitRequested += (title, items) => RunSeriesSend(title, items);
+        review.NotesConfigured = _settings.NotesConfigured;
+        review.NotesLister = SafeListNotes;
+        review.ConfigureNotesRequested += () => OpenSettings();
+        review.SubmitToNotesRequested += (title, noteId, header, items) => RunNotesSeriesSend(title, noteId, header, items);
         review.Show();
         review.Activate();
     }
@@ -332,6 +340,103 @@ public sealed class TrayApplicationContext : ApplicationContext
         thread.SetApartmentState(System.Threading.ApartmentState.STA);
         thread.IsBackground = true;
         thread.Start();
+    }
+
+    // ----- Desktop Notes (Capture API) -----
+
+    /// <summary>List existing Notes for the picker. Runs synchronously (called on a worker thread).</summary>
+    private IReadOnlyList<NoteRef> SafeListNotes()
+    {
+        try
+        {
+            var s = _settings;
+            if (!s.NotesConfigured) return Array.Empty<NoteRef>();
+            return new NotesClient(s.NotesBaseUrlOrDefault, s.NotesApiToken!).ListNotesAsync().GetAwaiter().GetResult();
+        }
+        catch
+        {
+            return Array.Empty<NoteRef>();
+        }
+    }
+
+    private void RunNotesSend(string? title, string? noteId, string? text, byte[]? png)
+    {
+        if (!EnsureNotesConfigured()) return;
+        if (System.Threading.Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
+        {
+            ShowWarning("Busy sending — try again in a moment.");
+            return;
+        }
+
+        var settings = _settings;
+        var thread = new System.Threading.Thread(() =>
+        {
+            try
+            {
+                Report(success: true, "Sending to Desktop Notes…");
+                var client = new NotesClient(settings.NotesBaseUrlOrDefault, settings.NotesApiToken!);
+                client.SendAsync(title, noteId, text, png).GetAwaiter().GetResult();
+                Report(success: true, "Added to Desktop Notes.");
+            }
+            catch (Exception ex)
+            {
+                Report(success: false, "Couldn't add to Desktop Notes: " + ex.Message);
+            }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(ref _busy, 0);
+            }
+        });
+        thread.IsBackground = true;
+        thread.Start();
+    }
+
+    private void RunNotesSeriesSend(string? title, string? noteId, string header, IReadOnlyList<SeriesItem> items)
+    {
+        if (items.Count == 0) return;
+        if (!EnsureNotesConfigured()) return;
+        if (System.Threading.Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
+        {
+            ShowWarning("Busy sending — try again in a moment.");
+            return;
+        }
+
+        string what = items.Count == 1 ? "a note" : $"a series of {items.Count}";
+        var settings = _settings;
+        var thread = new System.Threading.Thread(() =>
+        {
+            try
+            {
+                Report(success: true, $"Sending {what} to Desktop Notes…");
+                var client = new NotesClient(settings.NotesBaseUrlOrDefault, settings.NotesApiToken!);
+
+                // Header first (as a text line), then each captioned shot — all to the same note.
+                if (!string.IsNullOrWhiteSpace(header))
+                    client.SendAsync(title, noteId, header, null).GetAwaiter().GetResult();
+                foreach (var item in items)
+                    client.SendAsync(title, noteId, item.Caption, item.Png).GetAwaiter().GetResult();
+
+                Report(success: true, $"Added {what} to Desktop Notes.");
+            }
+            catch (Exception ex)
+            {
+                Report(success: false, "Couldn't add to Desktop Notes: " + ex.Message);
+            }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(ref _busy, 0);
+            }
+        });
+        thread.IsBackground = true;
+        thread.Start();
+    }
+
+    private bool EnsureNotesConfigured()
+    {
+        if (_settings.NotesConfigured) return true;
+        ShowInfo("Set the Desktop Notes API token in Settings first.");
+        OpenSettings();
+        return false;
     }
 
     private void RunCapture(Func<CapturedContent> grab, string emptyMessage, string? label = null)
