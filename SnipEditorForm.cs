@@ -1,6 +1,7 @@
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace QuickOneNote;
@@ -32,6 +33,9 @@ public sealed class SnipEditorForm : Form
 
     /// <summary>Raised when the user sends the snip to Desktop Notes; carries (title, noteId, append, png).</summary>
     public event Action<string?, string?, bool, byte[]>? SendToNotesRequested;
+
+    /// <summary>Raised when the user sends OCR text to Desktop Notes; carries (title, noteId, append, text).</summary>
+    public event Action<string?, string?, bool, string>? SendTextToNotesRequested;
 
     /// <summary>Raised when the Notes menu is used but no token is configured yet.</summary>
     public event Action? ConfigureNotesRequested;
@@ -175,6 +179,9 @@ public sealed class SnipEditorForm : Form
             ForeColor = Color.FromArgb(16, 122, 90),
             ToolTipText = "Send to Desktop Notes",
         };
+        // The button face uses a large icon font for the glyph; the menu must use a normal UI font
+        // (otherwise the menu text inherits the icon font and renders huge/clipped).
+        b.DropDown.Font = new Font("Segoe UI", 9.75f);
         b.DropDownOpening += (_, _) => PopulateNotesMenu(b);
         return b;
     }
@@ -201,25 +208,38 @@ public sealed class SnipEditorForm : Form
             return;
         }
 
+        // The screenshot image goes to the chosen note.
+        AddNoteTargets(b.DropDownItems, SendToNotes);
+
+        // A parallel submenu sends the OCR-recognised text instead of the image.
+        b.DropDownItems.Add(new ToolStripSeparator());
+        var ocr = new ToolStripMenuItem("Recognised text (OCR)");
+        AddNoteTargets(ocr.DropDownItems, SendOcrToNotes);
+        b.DropDownItems.Add(ocr);
+    }
+
+    /// <summary>Add Daily / New / existing-note items that call <paramref name="onPick"/>(title, noteId, append).</summary>
+    private void AddNoteTargets(ToolStripItemCollection items, Action<string?, string?, bool> onPick)
+    {
         var daily = new ToolStripMenuItem($"Daily note ({DateTime.Now:yyyy-MM-dd})");
-        daily.Click += (_, _) => SendToNotes(DateTime.Now.ToString("yyyy-MM-dd"), null, append: true);
-        b.DropDownItems.Add(daily);
+        daily.Click += (_, _) => onPick(DateTime.Now.ToString("yyyy-MM-dd"), null, true);
+        items.Add(daily);
 
         var newNote = new ToolStripMenuItem("New note with title…");
-        newNote.Click += (_, _) => { var t = PromptForTitle("Title for the new note:", ""); if (!string.IsNullOrWhiteSpace(t)) SendToNotes(t!.Trim(), null, append: false); };
-        b.DropDownItems.Add(newNote);
+        newNote.Click += (_, _) => { var t = PromptForTitle("Title for the new note:", ""); if (!string.IsNullOrWhiteSpace(t)) onPick(t!.Trim(), null, false); };
+        items.Add(newNote);
 
-        b.DropDownItems.Add(new ToolStripSeparator());
-        b.DropDownItems.Add(new ToolStripMenuItem("Append to an existing note:") { Enabled = false });
+        items.Add(new ToolStripSeparator());
+        items.Add(new ToolStripMenuItem("Append to an existing note:") { Enabled = false });
 
         if (_notesCache == null)
         {
-            b.DropDownItems.Add(new ToolStripMenuItem("Loading… (reopen in a moment)") { Enabled = false });
+            items.Add(new ToolStripMenuItem("Loading… (reopen in a moment)") { Enabled = false });
             PrefetchNotes();
         }
         else if (_notesCache.Count == 0)
         {
-            b.DropDownItems.Add(new ToolStripMenuItem("No existing notes found") { Enabled = false });
+            items.Add(new ToolStripMenuItem("No existing notes found") { Enabled = false });
         }
         else
         {
@@ -228,8 +248,8 @@ public sealed class SnipEditorForm : Form
                 string title = note.Title;
                 string? id = note.Id;
                 var mi = new ToolStripMenuItem(title);
-                mi.Click += (_, _) => SendToNotes(title, id, append: true);
-                b.DropDownItems.Add(mi);
+                mi.Click += (_, _) => onPick(title, id, true);
+                items.Add(mi);
             }
         }
     }
@@ -240,6 +260,14 @@ public sealed class SnipEditorForm : Form
         using (var bmp = _canvas.Render())
             bmp.Save(ms, ImageFormat.Png);
         SendToNotesRequested?.Invoke(title, noteId, append, ms.ToArray());
+        Close();
+    }
+
+    private async void SendOcrToNotes(string? title, string? noteId, bool append)
+    {
+        string? text = await RecognizeCurrentAsync();
+        if (string.IsNullOrWhiteSpace(text)) return;   // RecognizeCurrentAsync already reported why
+        SendTextToNotesRequested?.Invoke(title, noteId, append, text!);
         Close();
     }
 
@@ -371,6 +399,24 @@ public sealed class SnipEditorForm : Form
 
     private async void DoOcr(bool send)
     {
+        string? text = await RecognizeCurrentAsync();
+        if (text == null) return;
+
+        if (send)
+        {
+            SendTextRequested?.Invoke(text);
+            Close();
+        }
+        else
+        {
+            try { Clipboard.SetText(text); } catch { }
+            MessageBox.Show(this, "Recognised text copied to the clipboard.", "QuickOneNote", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+    }
+
+    /// <summary>OCR the raw screenshot (no annotations). Returns null and shows a message on failure/empty.</summary>
+    private async Task<string?> RecognizeCurrentAsync()
+    {
         byte[] png;
         using (var ms = new MemoryStream())
         {
@@ -387,24 +433,15 @@ public sealed class SnipEditorForm : Form
             if (string.IsNullOrWhiteSpace(text))
             {
                 MessageBox.Show(this, "No text was found in the image.", "QuickOneNote", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
+                return null;
             }
-
-            if (send)
-            {
-                SendTextRequested?.Invoke(text);
-                Close();
-            }
-            else
-            {
-                try { Clipboard.SetText(text); } catch { }
-                MessageBox.Show(this, "Recognised text copied to the clipboard.", "QuickOneNote", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
+            return text;
         }
         catch (Exception ex)
         {
             UseWaitCursor = false;
             MessageBox.Show(this, "OCR failed: " + ex.Message, "QuickOneNote", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return null;
         }
     }
 

@@ -239,6 +239,8 @@ public sealed class TrayApplicationContext : ApplicationContext
             editor.ConfigureNotesRequested += () => OpenSettings();
             editor.SendToNotesRequested += (title, noteId, append, png) =>
                 RunNotesSend(title, noteId, NotesFormat.Prepend(append, NotesFormat.ScreenshotCallout()), png);
+            editor.SendTextToNotesRequested += (title, noteId, append, text) =>
+                RunNotesSend(title, noteId, NotesFormat.Prepend(append, NotesFormat.OcrCallout() + "\n\n" + text), null);
             editor.Show();
             editor.Activate();
         }

@@ -10,9 +10,11 @@ namespace QuickOneNote;
 /// </summary>
 internal static class NotesFormat
 {
-    private const string MidDot = "\u00B7";   // middle dot separator
-    private const string EmDash = "\u2014";   // em dash
-    private const string Nbsp = "\u00A0";     // non-breaking space (renders as an empty paragraph)
+    private const string MidDot = "\u00B7";      // middle dot separator
+    private const string EmDash = "\u2014";      // em dash
+    // Braille blank: not treated as whitespace, so the Markdown parser keeps it as an empty
+    // paragraph (a plain / non-breaking space gets trimmed and collapsed).
+    private const string BlankLine = "\u2800";
 
     /// <summary>Build a callout block: <c>&gt; [!kind] title</c> then one <c>&gt; </c> line per body entry.</summary>
     public static string Callout(string kind, string title, params string[] body)
@@ -29,14 +31,18 @@ internal static class NotesFormat
         Callout("info", "Screenshot",
             $"Captured with QuickOneNote {MidDot} " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
 
+    /// <summary>Info callout that precedes OCR text sent to Desktop Notes.</summary>
+    public static string OcrCallout() =>
+        Callout("info", "Recognized text (OCR)",
+            $"QuickOneNote {MidDot} " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
+
     /// <summary>
     /// Prepend blank spacing so an entry appended to an existing note is separated from earlier
-    /// content. Uses non-breaking-space lines because the Markdown renderer collapses truly empty
-    /// lines; each renders as an (empty-looking) paragraph, i.e. real vertical space. No-op when
-    /// creating a fresh note.
+    /// content. Uses Braille-blank lines (each renders as an empty paragraph) because the Markdown
+    /// parser trims plain/non-breaking-space lines away. No-op when creating a fresh note.
     /// </summary>
     public static string Prepend(bool separate, string text) =>
-        separate ? $"{Nbsp}\n{Nbsp}\n\n{text}" : text;
+        separate ? $"{BlankLine}\n{BlankLine}\n{text}" : text;
 
     /// <summary>Info callout used as the header of a screenshot series.</summary>
     public static string SeriesHeaderCallout(string title, int shotCount)
