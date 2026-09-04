@@ -41,9 +41,44 @@ internal static class Program
         File.WriteAllText(Path.ChangeExtension(outPath, ".txt"), log.ToString());
     }
 
+    private static void RunUpdateTest(string[] args)
+    {
+        string outPath = Path.Combine(Path.GetTempPath(), "quickonenote_updatetest.txt");
+        int oi = Array.FindIndex(args, a => string.Equals(a, "--out", StringComparison.OrdinalIgnoreCase));
+        if (oi >= 0 && oi + 1 < args.Length) outPath = args[oi + 1];
+
+        var log = new System.Text.StringBuilder();
+        try
+        {
+            var s = AppSettings.Load();
+            string repo = string.IsNullOrWhiteSpace(s.UpdateRepo) ? "tlalos/QuickOneNote" : s.UpdateRepo!;
+            log.AppendLine($"repo = {repo}; current = v{TrayApplicationContext.AppVersion}");
+            var rel = AppUpdater.CheckLatestAsync(repo, s.UpdateToken ?? "", includePrerelease: false,
+                assetPrefix: "quickonenote-update", currentVersion: TrayApplicationContext.AppVersion)
+                .GetAwaiter().GetResult();
+            log.AppendLine($"Available = {rel.Available}");
+            log.AppendLine($"Version   = {rel.Version}");
+            log.AppendLine($"Asset     = {rel.AssetName}");
+            log.AppendLine($"AssetUrl  = {rel.AssetUrl}");
+        }
+        catch (Exception ex)
+        {
+            log.AppendLine("ERROR " + ex);
+        }
+        File.WriteAllText(outPath, log.ToString());
+    }
+
     [STAThread]
     private static void Main(string[] args)
     {
+        // Update helper: when relaunched as the detached helper, swap the installed files and exit
+        // BEFORE any WinForms/UI or the single-instance mutex. (See SelfUpdate.)
+        if (args.Length > 0 && string.Equals(args[0], "apply-update", StringComparison.OrdinalIgnoreCase))
+        {
+            Environment.Exit(SelfUpdate.ApplyUpdate(args));
+            return;
+        }
+
         ApplicationConfiguration.Initialize();
 
 
@@ -81,6 +116,13 @@ internal static class Program
         if (args.Any(a => string.Equals(a, "--wgctest", StringComparison.OrdinalIgnoreCase)))
         {
             RunWgcTest(args);
+            return;
+        }
+
+        // Hidden update test: query GitHub Releases and report whether a newer version is available.
+        if (args.Any(a => string.Equals(a, "--updatetest", StringComparison.OrdinalIgnoreCase)))
+        {
+            RunUpdateTest(args);
             return;
         }
 

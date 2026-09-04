@@ -179,6 +179,35 @@ public sealed class AppSettings
     [JsonIgnore]
     public bool NotesConfigured => !string.IsNullOrWhiteSpace(NotesApiToken);
 
+    // ----- Auto-update (GitHub Releases) -----
+
+    /// <summary>GitHub repo (owner/repo) whose Releases are checked for updates.</summary>
+    public string? UpdateRepo { get; set; } = "tlalos/QuickOneNote";
+
+    /// <summary>Check for updates on launch.</summary>
+    public bool AutoUpdate { get; set; } = true;
+
+    /// <summary>GitHub PAT (only needed for a private update repo), DPAPI-encrypted (base64) at rest.</summary>
+    public string? UpdateTokenProtected { get; set; }
+
+    /// <summary>Plaintext accessor for the update token; encrypts/decrypts via DPAPI transparently.</summary>
+    [JsonIgnore]
+    public string? UpdateToken
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(UpdateTokenProtected)) return null;
+            try { return System.Text.Encoding.UTF8.GetString(DpapiProtect.Unprotect(Convert.FromBase64String(UpdateTokenProtected))); }
+            catch { return null; }
+        }
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) { UpdateTokenProtected = null; return; }
+            try { UpdateTokenProtected = Convert.ToBase64String(DpapiProtect.Protect(System.Text.Encoding.UTF8.GetBytes(value))); }
+            catch { UpdateTokenProtected = null; }
+        }
+    }
+
     [JsonIgnore]
     public bool IsConfigured => !string.IsNullOrEmpty(SectionId);
 

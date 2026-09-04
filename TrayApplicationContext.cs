@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace QuickOneNote;
@@ -66,6 +67,10 @@ public sealed class TrayApplicationContext : ApplicationContext
             ShowInfo("Welcome! Open Settings to choose a OneNote section and hotkeys.");
             OpenSettings();
         }
+
+        // Check for a newer release on launch (opt-in; silent when already up to date).
+        if (_settings.AutoUpdate)
+            _ = CheckForUpdatesAsync(userInitiated: false);
     }
 
     /// <summary>Human-readable app version, e.g. "1.1.0" (from the assembly's informational version).</summary>
@@ -99,6 +104,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(_finishSeriesItem);
         menu.Items.Add(_cancelSeriesItem);
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Check for updates…", null, (_, _) => _ = CheckForUpdatesAsync(userInitiated: true));
         menu.Items.Add("Settings…", null, (_, _) => OpenSettings());
         menu.Items.Add("Exit", null, (_, _) => ExitApp());
         menu.Opening += (_, _) => UpdateSeriesMenu();
@@ -511,6 +517,70 @@ public sealed class TrayApplicationContext : ApplicationContext
         }
         catch (ObjectDisposedException) { /* shutting down */ }
         catch (InvalidOperationException) { /* handle not created */ }
+    }
+
+    // ----- Auto-update -----
+
+    private const string UpdateAssetPrefix = "quickonenote-update";
+
+    private async Task CheckForUpdatesAsync(bool userInitiated)
+    {
+        var settings = _settings;
+        string repo = settings.UpdateRepo?.Trim() ?? "";
+        string token = settings.UpdateToken ?? "";
+        if (string.IsNullOrWhiteSpace(repo))
+        {
+            if (userInitiated) ShowInfo("Set the update repository in Settings first.");
+            return;
+        }
+
+        try
+        {
+            var rel = await AppUpdater.CheckLatestAsync(repo, token, includePrerelease: false,
+                assetPrefix: UpdateAssetPrefix, currentVersion: AppVersion).ConfigureAwait(false);
+
+            if (!rel.Available)
+            {
+                if (userInitiated) Report(success: true, $"You're up to date (v{AppVersion}).");
+                return;
+            }
+
+            bool yes = UiConfirm(
+                $"Version {rel.Version} is available (you have {AppVersion}).\n\nUpdate now? QuickOneNote will restart.");
+            if (!yes) return;
+
+            var ok = await SelfUpdate.TryUpdateAsync(rel, token,
+                onProgress: (phase, pct) => Report(success: true, $"Update: {phase} {pct:0}%"),
+                onError: msg => Report(success: false, "Update failed: " + msg)).ConfigureAwait(false);
+
+            if (ok) Ui(ExitApp);   // release the exe so the helper can swap it, then it relaunches us
+        }
+        catch (Exception ex)
+        {
+            if (userInitiated) Report(success: false, "Update check failed: " + ex.Message);
+        }
+    }
+
+    /// <summary>Run an action on the UI thread (no-op while shutting down).</summary>
+    private void Ui(Action action)
+    {
+        if (_marshal.IsDisposed) return;
+        try { _marshal.Invoke(action); }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    /// <summary>Show a Yes/No prompt on the UI thread and return the answer.</summary>
+    private bool UiConfirm(string message)
+    {
+        if (_marshal.IsDisposed) return false;
+        try
+        {
+            return (bool)_marshal.Invoke(new Func<bool>(() =>
+                MessageBox.Show(message, "QuickOneNote update", MessageBoxButtons.YesNo, MessageBoxIcon.Question)
+                == DialogResult.Yes));
+        }
+        catch { return false; }
     }
 
     // ----- Settings -----

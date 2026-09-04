@@ -31,6 +31,9 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _saveShots = new();
     private readonly TextBox _notesUrl = new();
     private readonly TextBox _notesToken = new();
+    private readonly CheckBox _autoUpdate = new();
+    private readonly TextBox _updateRepo = new();
+    private readonly TextBox _updateToken = new();
 
     private HotkeyConfig _pendingHotkey;
     private HotkeyConfig _pendingClipHotkey;
@@ -61,6 +64,9 @@ public sealed class SettingsForm : Form
             SaveScreenshots = current.SaveScreenshots,
             NotesApiBaseUrl = current.NotesApiBaseUrl,
             NotesApiTokenProtected = current.NotesApiTokenProtected,
+            UpdateRepo = current.UpdateRepo,
+            AutoUpdate = current.AutoUpdate,
+            UpdateTokenProtected = current.UpdateTokenProtected,
         };
         _pendingHotkey = _working.Hotkey;
         _pendingClipHotkey = _working.ClipboardHotkey;
@@ -77,6 +83,9 @@ public sealed class SettingsForm : Form
         _autostart.Checked = Startup.IsEnabled();
         _notesUrl.Text = _working.NotesApiBaseUrl ?? "";
         _notesToken.Text = _working.NotesApiToken ?? "";
+        _autoUpdate.Checked = _working.AutoUpdate;
+        _updateRepo.Text = _working.UpdateRepo ?? "";
+        _updateToken.Text = _working.UpdateToken ?? "";
         _hotkeyBox.Text = _working.Hotkey.Display;
         _clipHotkeyBox.Text = _working.ClipboardHotkey.Display;
         _screenshotHotkeyBox.Text = _working.ScreenshotHotkey.Display;
@@ -97,7 +106,7 @@ public sealed class SettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(460, 992);
+        ClientSize = new Size(460, 1162);
         // On smaller or DPI-scaled displays the tall dialog may exceed the work area; let it scroll
         // rather than clipping the buttons at the bottom.
         AutoScroll = true;
@@ -219,9 +228,28 @@ public sealed class SettingsForm : Form
         _notesUrl.Width = w;
         _notesUrl.PlaceholderText = NotesClient.DefaultBaseUrl;
 
-        var ok = new Button { Text = "Save", Location = new Point(w - 74 + x, 946), Size = new Size(90, 30) };
+        var lblUpdate = new Label
+        {
+            Text = "Updates (GitHub Releases)",
+            Location = new Point(x, 942),
+            AutoSize = true,
+            Font = new Font(Font, FontStyle.Bold),
+        };
+        _autoUpdate.Text = "Check for updates on launch";
+        _autoUpdate.Location = new Point(x, 968);
+        _autoUpdate.AutoSize = true;
+        var lblRepo = new Label { Text = "Update repository (owner/repo):", Location = new Point(x, 996), AutoSize = true };
+        _updateRepo.Location = new Point(x, 1018);
+        _updateRepo.Width = w;
+        _updateRepo.PlaceholderText = "tlalos/QuickOneNote";
+        var lblUpToken = new Label { Text = "GitHub token (only for a private repo):", Location = new Point(x, 1050), AutoSize = true };
+        _updateToken.Location = new Point(x, 1072);
+        _updateToken.Width = w;
+        _updateToken.UseSystemPasswordChar = true;
+
+        var ok = new Button { Text = "Save", Location = new Point(w - 74 + x, 1116), Size = new Size(90, 30) };
         ok.Click += Ok_Click;
-        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(w - 170 + x, 946), Size = new Size(90, 30) };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(w - 170 + x, 1116), Size = new Size(90, 30) };
 
         Controls.AddRange(new Control[]
         {
@@ -232,7 +260,8 @@ public sealed class SettingsForm : Form
             lblHotkey, _hotkeyBox, lblClipHotkey, _clipHotkeyBox, lblScreenHotkey, _screenshotHotkeyBox,
             lblSnipHotkey, _snipHotkeyBox, lblSeriesHotkey, _seriesHotkeyBox,
             _notifications, _saveShots, _autostart,
-            lblNotes, lblNotesToken, _notesToken, lblNotesUrl, _notesUrl, ok, cancel,
+            lblNotes, lblNotesToken, _notesToken, lblNotesUrl, _notesUrl,
+            lblUpdate, _autoUpdate, lblRepo, _updateRepo, lblUpToken, _updateToken, ok, cancel,
         });
 
         const string hotkeyTip = "Click and press a key combination (must include Ctrl, Shift, or Alt). Press Delete to clear and disable this shortcut.";
@@ -438,6 +467,9 @@ public sealed class SettingsForm : Form
         _working.SaveScreenshots = _saveShots.Checked;
         _working.NotesApiBaseUrl = string.IsNullOrWhiteSpace(_notesUrl.Text) ? null : _notesUrl.Text.Trim();
         _working.NotesApiToken = string.IsNullOrWhiteSpace(_notesToken.Text) ? null : _notesToken.Text.Trim();
+        _working.AutoUpdate = _autoUpdate.Checked;
+        _working.UpdateRepo = string.IsNullOrWhiteSpace(_updateRepo.Text) ? null : _updateRepo.Text.Trim();
+        _working.UpdateToken = string.IsNullOrWhiteSpace(_updateToken.Text) ? null : _updateToken.Text.Trim();
 
         // Apply the run-at-login registry entry immediately.
         Startup.Set(_autostart.Checked);
