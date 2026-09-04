@@ -20,6 +20,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     private readonly Control _marshal = new();   // hidden control used to marshal back to the UI thread
     private AppSettings _settings;
     private int _busy; // 0 = idle, 1 = capture in progress
+    private int _updating; // 0 = idle, 1 = an update check/apply is in progress
 
     private SnipEditorForm? _editor;   // the single open snip-editor window
     private bool _snipping;            // guards against re-entrant snips
@@ -525,17 +526,25 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     private async Task CheckForUpdatesAsync(bool userInitiated)
     {
-        var settings = _settings;
-        string repo = settings.UpdateRepo?.Trim() ?? "";
-        string token = settings.UpdateToken ?? "";
-        if (string.IsNullOrWhiteSpace(repo))
+        // Only one update flow at a time (a launch check + a manual check must not both run).
+        if (System.Threading.Interlocked.CompareExchange(ref _updating, 1, 0) != 0)
         {
-            if (userInitiated) ShowInfo("Set the update repository in Settings first.");
+            if (userInitiated) ShowInfo("An update check is already in progress.");
             return;
         }
 
+        UpdateProgressForm? progress = null;
         try
         {
+            var settings = _settings;
+            string repo = settings.UpdateRepo?.Trim() ?? "";
+            string token = settings.UpdateToken ?? "";
+            if (string.IsNullOrWhiteSpace(repo))
+            {
+                if (userInitiated) ShowInfo("Set the update repository in Settings first.");
+                return;
+            }
+
             var rel = await AppUpdater.CheckLatestAsync(repo, token, includePrerelease: false,
                 assetPrefix: UpdateAssetPrefix, currentVersion: AppVersion).ConfigureAwait(false);
 
@@ -549,13 +558,14 @@ public sealed class TrayApplicationContext : ApplicationContext
                 $"Version {rel.Version} is available (you have {AppVersion}).\n\nUpdate now? QuickOneNote will restart.");
             if (!yes) return;
 
-            // Show one in-place progress toast (updated live) instead of a balloon per percent,
-            // which would flicker (a balloon can't be updated — it re-pops each time).
-            UpdateProgressForm? progress = null;
-            Ui(() => { progress = new UpdateProgressForm(rel.Version); progress.Show(); });
+            // One in-place progress toast (updated live) instead of a balloon per percent (a balloon
+            // can't be updated — it re-pops each time and flickers). Progress ticks are posted with
+            // BeginInvoke so they never block the download thread.
+            Ui(() => { progress = new UpdateProgressForm(rel.Version); progress!.Show(); });
+            var toast = progress;
 
             var ok = await SelfUpdate.TryUpdateAsync(rel, token,
-                onProgress: (phase, pct) => Ui(() => progress?.SetProgress(phase, (int)pct)),
+                onProgress: (phase, pct) => UiPost(() => toast?.SetProgress(phase, (int)pct)),
                 onError: msg => Report(success: false, "Update failed: " + msg)).ConfigureAwait(false);
 
             if (ok)
@@ -564,12 +574,18 @@ public sealed class TrayApplicationContext : ApplicationContext
             }
             else
             {
-                Ui(() => { progress?.Close(); progress?.Dispose(); });
+                Ui(() => { toast?.Close(); toast?.Dispose(); });
             }
         }
         catch (Exception ex)
         {
+            var toast = progress;
+            if (toast != null) Ui(() => { toast.Close(); toast.Dispose(); });
             if (userInitiated) Report(success: false, "Update check failed: " + ex.Message);
+        }
+        finally
+        {
+            System.Threading.Interlocked.Exchange(ref _updating, 0);
         }
     }
 
@@ -578,6 +594,15 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
         if (_marshal.IsDisposed) return;
         try { _marshal.Invoke(action); }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    /// <summary>Post an action to the UI thread without blocking the caller (for frequent updates).</summary>
+    private void UiPost(Action action)
+    {
+        if (_marshal.IsDisposed) return;
+        try { _marshal.BeginInvoke(action); }
         catch (ObjectDisposedException) { }
         catch (InvalidOperationException) { }
     }
