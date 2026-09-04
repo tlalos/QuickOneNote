@@ -40,10 +40,18 @@ it runs on a PC with no OneNote installed).
 - **Cloud** via Microsoft Graph (device‑code sign‑in; **no OneNote install needed**). The refresh
   token is stored **encrypted** with Windows DPAPI.
 
+**Send to Desktop Notes** (optional second target)
+- Push a snip — or its **OCR text** — to the [Desktop Notes](#send-to-desktop-notes-capture-api)
+  app via its Capture API: **daily note** (append/create by date), a **new** note, or an existing
+  note picked from a live list. Titles/headers use info **callouts**.
+
 **Quality‑of‑life**
 - Append to **today's page** or a **new page** each time; entries separated and titled.
 - Fully **configurable hotkeys** (clear one to disable it), notification toggle, and
   **Start with Windows**.
+- Auto‑save every capture to **Pictures\Screenshots** (like the Snipping Tool).
+- **Auto‑update** from GitHub Releases — checks on launch, updates in place, no installer or admin
+  (see [Auto‑update](#auto-update)).
 - **Single instance** / single editor window.
 - Optional **"Add to OneNote"** right‑click entry for image/`.txt` files in Explorer.
 - Ships as a **self‑contained** build that needs no .NET install on the target PC.
@@ -114,6 +122,62 @@ pick a section → **Save**. No redirect URI or secret is needed (OAuth device�
 ## Start at login
 
 Tick **Start with Windows** in Settings (adds a per‑user `HKCU\…\Run` entry — no admin needed).
+
+## Send to Desktop Notes (Capture API)
+
+QuickOneNote can also push captures to a separate **Desktop Notes** app through its HTTP Capture
+API — a second destination alongside OneNote. In **Settings → Desktop Notes**, paste the **API
+token** (from the Notes app → Settings → API token); the server URL defaults to the public one and
+the token is stored **encrypted** with DPAPI.
+
+Then the snip editor and the series review window gain a **Send to Notes** menu:
+
+- **Daily note** — appends to (or creates) a note titled with today's date.
+- **New note with title…** — creates a fresh note.
+- **Append to an existing note** — pick one from your live note list.
+- **Recognised text (OCR)** — the same targets, but sends the OCR‑extracted **text** instead of the
+  image.
+
+Titles and series headers are sent as info **callouts**, and entries appended to an existing note
+are spaced apart so each capture stays distinct.
+
+## Auto-update
+
+QuickOneNote updates itself from this repo's **GitHub Releases** — no installer, no admin rights.
+
+**For users:** on launch (and via tray → **Check for updates…**) it compares the running version
+against the latest release. If a newer one exists it asks to update, downloads the package, swaps
+the files in place, and **relaunches** — your settings in `%APPDATA%\QuickOneNote` are untouched.
+Toggle the launch check and set the repo under **Settings → Updates**. (A GitHub token is only
+needed if the release repo is private; for a public repo leave it blank.)
+
+How it works: a running exe can't overwrite its own files, so the update is applied by a detached
+helper. The app downloads the release zip, extracts it to a *staging* folder outside the install
+dir, launches the staged `QuickOneNote.exe` with an `apply-update` verb, and exits; the helper
+waits for the old exe to unlock, copies the staged files over the install dir, and relaunches.
+Progress shows as tray notifications; the helper logs to `<install>\update.log`.
+
+**For maintainers — cutting a release** (keep the tag, `<Version>`, and asset name in lockstep):
+
+1. Bump `<Version>` in [`QuickOneNote.csproj`](QuickOneNote.csproj).
+2. Build the self‑contained package (produces `dist\quickonenote-update-<version>.zip` with the
+   files at the zip root):
+
+   ```bash
+   powershell -ExecutionPolicy Bypass -File scripts\package-update.ps1
+   ```
+
+3. Create the release with that asset:
+
+   ```bash
+   gh release create v1.4.1 "dist\quickonenote-update-1.4.1.zip" \
+     --repo tlalos/QuickOneNote --title v1.4.1 --notes "What changed"
+   ```
+
+The checker scans up to 30 releases and picks the highest tag newer than the running version that
+carries a `quickonenote-update-*.zip` asset, so re‑cut or out‑of‑order releases still resolve. The
+asset is a **self‑contained x86, multi‑file** build (not single‑file) — that layout is what lets
+the helper relaunch from the staged copy.
 
 ## Notes & limits
 
