@@ -52,9 +52,11 @@ internal static class Program
         {
             var s = AppSettings.Load();
             string repo = string.IsNullOrWhiteSpace(s.UpdateRepo) ? "tlalos/QuickOneNote" : s.UpdateRepo!;
-            log.AppendLine($"repo = {repo}; current = v{TrayApplicationContext.AppVersion}");
+            int ci = Array.FindIndex(args, a => string.Equals(a, "--current", StringComparison.OrdinalIgnoreCase));
+            string current = (ci >= 0 && ci + 1 < args.Length) ? args[ci + 1] : TrayApplicationContext.AppVersion;
+            log.AppendLine($"repo = {repo}; current = v{current}");
             var rel = AppUpdater.CheckLatestAsync(repo, s.UpdateToken ?? "", includePrerelease: false,
-                assetPrefix: "quickonenote-update", currentVersion: TrayApplicationContext.AppVersion)
+                assetPrefix: "quickonenote-update", currentVersion: current)
                 .GetAwaiter().GetResult();
             log.AppendLine($"Available = {rel.Available}");
             log.AppendLine($"Version   = {rel.Version}");
