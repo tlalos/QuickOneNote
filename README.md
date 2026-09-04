@@ -77,6 +77,17 @@ captures the selection.
 - To build: **.NET 9 SDK**. To run a framework‑dependent build: the **x86 .NET 9 Desktop Runtime**
   (or use the self‑contained build below).
 
+## Install
+
+Grab the latest [release](https://github.com/tlalos/QuickOneNote/releases) and either:
+
+- **Installer** — run `QuickOneNote-Setup-<version>.exe`. It's a **per-user** install (to
+  `%LOCALAPPDATA%\Programs\QuickOneNote`, **no admin**), adds a Start-menu shortcut, and registers
+  an uninstaller. Per-user keeps the install dir writable so the built-in auto-updater works.
+- **Portable zip** — extract `quickonenote-update-<version>.zip` anywhere and run `QuickOneNote.exe`.
+
+Either way, updates after that are automatic (see [Auto-update](#auto-update)).
+
 ## Build & run
 
 ```bash
@@ -160,17 +171,21 @@ Progress shows as tray notifications; the helper logs to `<install>\update.log`.
 **For maintainers — cutting a release** (keep the tag, `<Version>`, and asset name in lockstep):
 
 1. Bump `<Version>` in [`QuickOneNote.csproj`](QuickOneNote.csproj).
-2. Build the self‑contained package (produces `dist\quickonenote-update-<version>.zip` with the
-   files at the zip root):
+2. Build both release assets — the update zip and the installer (needs
+   [Inno Setup 6](https://jrsoftware.org/isinfo.php): `winget install JRSoftware.InnoSetup`):
 
    ```bash
-   powershell -ExecutionPolicy Bypass -File scripts\package-update.ps1
+   powershell -ExecutionPolicy Bypass -File scripts\release.ps1
    ```
 
-3. Create the release with that asset:
+   That produces `dist\quickonenote-update-<version>.zip` (files at the zip root) and
+   `dist\QuickOneNote-Setup-<version>.exe`. (Use `scripts\package-update.ps1` for just the zip, or
+   `scripts\build-installer.ps1` for just the installer.)
+
+3. Create the release with both assets:
 
    ```bash
-   gh release create v1.4.1 "dist\quickonenote-update-1.4.1.zip" \
+   gh release create v1.4.1 "dist\quickonenote-update-1.4.1.zip" "dist\QuickOneNote-Setup-1.4.1.exe" \
      --repo tlalos/QuickOneNote --title v1.4.1 --notes "What changed"
    ```
 

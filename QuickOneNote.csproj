@@ -10,10 +10,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>installer\app.ico</ApplicationIcon>
     <AssemblyName>QuickOneNote</AssemblyName>
     <RootNamespace>QuickOneNote</RootNamespace>
-    <Version>1.4.0</Version>
-    <InformationalVersion>1.4.0</InformationalVersion>
+    <Version>1.4.1</Version>
+    <InformationalVersion>1.4.1</InformationalVersion>
     <StartupObject>QuickOneNote.Program</StartupObject>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!--

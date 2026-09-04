@@ -128,6 +128,15 @@ internal static class Program
             return;
         }
 
+        // Hidden: export the app icon to a multi-size .ico (used when building the installer).
+        int icoIdx = Array.FindIndex(args, a => string.Equals(a, "--exporticon", StringComparison.OrdinalIgnoreCase));
+        if (icoIdx >= 0)
+        {
+            string path = (icoIdx + 1 < args.Length) ? args[icoIdx + 1] : "app.ico";
+            IconExport.Write(path);
+            return;
+        }
+
         // Hidden series test: build 2 captioned images and AppendSeries via the configured backend.
         if (args.Any(a => string.Equals(a, "--seriestest", StringComparison.OrdinalIgnoreCase)))
         {
