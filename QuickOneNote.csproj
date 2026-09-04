@@ -13,8 +13,8 @@
     <ApplicationIcon>installer\app.ico</ApplicationIcon>
     <AssemblyName>QuickOneNote</AssemblyName>
     <RootNamespace>QuickOneNote</RootNamespace>
-    <Version>1.4.3</Version>
-    <InformationalVersion>1.4.3</InformationalVersion>
+    <Version>1.4.4</Version>
+    <InformationalVersion>1.4.4</InformationalVersion>
     <StartupObject>QuickOneNote.Program</StartupObject>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!--
