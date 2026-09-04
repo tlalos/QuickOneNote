@@ -549,11 +549,23 @@ public sealed class TrayApplicationContext : ApplicationContext
                 $"Version {rel.Version} is available (you have {AppVersion}).\n\nUpdate now? QuickOneNote will restart.");
             if (!yes) return;
 
+            // Show one in-place progress toast (updated live) instead of a balloon per percent,
+            // which would flicker (a balloon can't be updated — it re-pops each time).
+            UpdateProgressForm? progress = null;
+            Ui(() => { progress = new UpdateProgressForm(rel.Version); progress.Show(); });
+
             var ok = await SelfUpdate.TryUpdateAsync(rel, token,
-                onProgress: (phase, pct) => Report(success: true, $"Update: {phase} {pct:0}%"),
+                onProgress: (phase, pct) => Ui(() => progress?.SetProgress(phase, (int)pct)),
                 onError: msg => Report(success: false, "Update failed: " + msg)).ConfigureAwait(false);
 
-            if (ok) Ui(ExitApp);   // release the exe so the helper can swap it, then it relaunches us
+            if (ok)
+            {
+                Ui(ExitApp);   // release the exe so the helper can swap it, then it relaunches us
+            }
+            else
+            {
+                Ui(() => { progress?.Close(); progress?.Dispose(); });
+            }
         }
         catch (Exception ex)
         {
